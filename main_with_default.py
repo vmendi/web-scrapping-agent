@@ -6,6 +6,7 @@ from anthropic import Anthropic
 from langchain_anthropic import ChatAnthropic
 from langchain_openai import ChatOpenAI
 from browser_use import Agent, Browser, BrowserConfig, BrowserContextConfig, Controller
+from browser_use.browser.context import BrowserContext
 import asyncio
 from dotenv import load_dotenv
 import openai
@@ -192,10 +193,14 @@ async def main():
                             llm=llm, 
                             planner_llm=planner_llm, 
                             log_dir=log_dir)
-    finally:
+    finally:        
         await browser.close()
 
-
+async def reset_browser_context(browser_context: BrowserContext):
+    await browser_context.create_new_tab()
+    page = await browser_context.get_current_page()
+    await asyncio.gather(*[page.close() for page in page.context.pages[:-1]])
+    
 async def run_all_tasks(browser: Browser, llm: BaseChatModel, planner_llm: BaseChatModel, log_dir: str):   
     schools = await run_task_fetch_schools(browser=browser, 
                                            llm=llm, 
