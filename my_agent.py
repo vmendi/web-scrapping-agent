@@ -6,6 +6,7 @@ import logging
 from typing import Generic, Optional, Type, TypeVar
 from browser_use import ActionResult, Browser, BrowserConfig, BrowserContextConfig
 from browser_use.browser.context import BrowserContext
+from browser_use.browser.views import BrowserState
 import asyncio
 from openai import OpenAI
 from openai.types.responses import ResponseFunctionToolCall
@@ -134,6 +135,8 @@ class MyAgent():
         self.my_agent_tools = MyAgentTools(browser_context=self.browser_context, 
                                            openai_client=self.openai_client)
         
+        self.output_schema = get_openai_schema(AgentOutputModel)
+        
         self.system_message = self.get_system_message()
         self.message_manager = MessageManager(system_message=self.system_message)
 
@@ -159,31 +162,18 @@ class MyAgent():
         logger.info(f'Step {step_number} of {max_steps}')
         
         browser_state = await self.browser_context.get_state()
+        self.save_screenshot(browser_state.screenshot, step_number)
 
-        # Prepare messages with screenshot
         messages = self.message_manager.get_all_messages_openai_format()
+
+        # Add current state as the last message in the list before calling the model. We don't store it in the message manager 
+        # on purpose. It's just state. If the model wants to memorize anything, it will write it to its memory.
+        messages.extend(self.get_current_state_message(current_step=step_number, browser_state=browser_state))
         
-        messages.append({
-            'role': 'user',
-            'content': [
-                {
-                    'type': 'input_text',
-                    'text': 'Here is a screenshot of the current state of the browser:'
-                },
-                {
-                    'type': 'input_image',
-                    'image_url': f"data:image/png;base64,{browser_state.screenshot}",
-                    "detail": "high"
-                }
-            ]
-        })
-
-        output_schema = get_openai_schema(AgentOutputModel)
-
         response = self.openai_client.responses.create(
             model="gpt-4o",
             input=messages,
-            text=output_schema,
+            text=self.output_schema,
             tools=self.my_agent_tools.tools_schema,
             tool_choice="required",         # Auto, none, or just one particular tool
             parallel_tool_calls=False,
@@ -204,5 +194,96 @@ class MyAgent():
 
         logger.info(f'Action result: {action_result.extracted_content}')
         self.message_manager.add_action_result(action_result=action_result)
+
+
+    @staticmethod
+    def get_current_state_message(current_step: int, browser_state: BrowserState) -> list[dict]:
+        include_attributes: list[str] = [
+            'title',
+            'type',
+            'name',
+            'role',
+            'aria-label',
+            'placeholder',
+            'value',
+            'alt',
+            'aria-expanded',
+        ]
+        elements_text = browser_state.element_tree.clickable_elements_to_string(include_attributes=include_attributes)
+
+        has_content_above = (browser_state.pixels_above or 0) > 0
+        has_content_below = (browser_state.pixels_below or 0) > 0
+
+        if elements_text != '':
+            if has_content_above:
+                elements_text = f'... {browser_state.pixels_above} pixels above - scroll or extract content to see more ...\n{elements_text}'
+            else:
+                elements_text = f'[Start of page]\n{elements_text}'
+
+            if has_content_below:
+                elements_text = f'{elements_text}\n... {browser_state.pixels_below} pixels below - scroll or extract content to see more ...'
+            else:
+                elements_text = f'{elements_text}\n[End of page]'
+        else:
+            elements_text = '- Empty page -'
+
+        return [
+            {
+                "role": "user",
+                "content": f"[Current state starts here]\n"
+                           f"Current step: {current_step + 1}\n"
+                           f"Current date and time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+                           f"The following is one-time information - if you need to remember it write it to memory:\n"
+                           f"Current url: {browser_state.url}\n"
+                           f"Available tabs:\n{browser_state.tabs}\n"
+                           f"Interactive elements from top layer of the current page inside the viewport:\n{elements_text}"
+            },
+            {
+                'role': 'user',
+                'content': [
+                    {
+                        'type': 'input_text',
+                        'text': 'Here is a screenshot of the current state of the browser:'
+                    },
+                    {
+                        'type': 'input_image',
+                        'image_url': f"data:image/png;base64,{browser_state.screenshot}",
+                        "detail": "high"
+                    }
+                ]
+            },
+            {
+                'role': 'user',
+                'content': f'[Current state ends here]'
+            }
+        ]
+
+
+    @staticmethod
+    def save_screenshot(screenshot_base64: str, step_number: int) -> str:
+        """
+        Save the base64 encoded screenshot to disk
+        
+        Args:
+            screenshot_base64: Base64 encoded PNG image
+            step_number: Current step number for the filename
+            
+        Returns:
+            The path to the saved screenshot
+        """
+        # Create screenshots directory if it doesn't exist
+        screenshots_dir = "screenshots"
+        os.makedirs(screenshots_dir, exist_ok=True)
+        
+        # Generate filename with timestamp and step number
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{screenshots_dir}/screenshot_{timestamp}_step{step_number}.png"
+        
+        # Decode base64 and write to file
+        with open(filename, "wb") as f:
+            f.write(base64.b64decode(screenshot_base64))
+            
+        logger.info(f"Screenshot saved to {filename}")
+        return filename
         
         

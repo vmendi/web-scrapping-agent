@@ -43,7 +43,7 @@ async def main():
     browser_context = await browser.new_context(config=browser_context_config)
 
     schools_task = f"""
-Your goal is to get a list of all of the Harvard University's schools.
+Get a list of all of the Harvard University's schools.
 The output columns are:
     School Name,
     School Website URL.
