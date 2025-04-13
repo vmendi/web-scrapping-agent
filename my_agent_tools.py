@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import json
 import logging
 from typing import Any, Awaitable, Callable, Dict, Generic, List, Optional, Type, TypeVar
+from functools import cached_property
 from browser_use import Browser
 from pydantic import BaseModel
 
@@ -515,7 +516,8 @@ class MyAgentTools():
     def get_tools(self):
         return self.tools
     
-    def get_tools_schema(self) -> list[dict]:		
+    @cached_property
+    def tools_schema(self) -> list[dict]:		
         tools_schema = []
         for tool in self.tools:
             function_tool_schema = function_schema(tool)

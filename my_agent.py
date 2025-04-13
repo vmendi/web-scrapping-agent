@@ -4,7 +4,7 @@ import json
 import os
 import logging
 from typing import Generic, Optional, Type, TypeVar
-from browser_use import ActionModel, ActionResult, Agent, Browser, BrowserConfig, BrowserContextConfig, Controller
+from browser_use import ActionResult, Browser, BrowserConfig, BrowserContextConfig
 from browser_use.browser.context import BrowserContext
 import asyncio
 from openai import OpenAI
@@ -131,9 +131,9 @@ class MyAgent():
 
         self.openai_client = OpenAI()
 
-        self.my_agent_tools = MyAgentTools(browser_context=self.browser_context, openai_client=self.openai_client)
-        self.tools_schema = self.my_agent_tools.get_tools_schema()
-
+        self.my_agent_tools = MyAgentTools(browser_context=self.browser_context, 
+                                           openai_client=self.openai_client)
+        
         self.system_message = self.get_system_message()
         self.message_manager = MessageManager(system_message=self.system_message)
 
@@ -184,7 +184,7 @@ class MyAgent():
             model="gpt-4o",
             input=messages,
             text=output_schema,
-            tools=self.tools_schema,
+            tools=self.my_agent_tools.tools_schema,
             tool_choice="required",         # Auto, none, or just one particular tool
             parallel_tool_calls=False,
             store=False
