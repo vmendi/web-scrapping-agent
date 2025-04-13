@@ -42,11 +42,6 @@ async def main():
     browser = Browser(config=config)
     browser_context = await browser.new_context(config=browser_context_config)
 
-    llm = ChatOpenAI(
-        model="gpt-4o",
-        temperature=0.0,
-    )
-
     schools_task = f"""
 Your goal is to get a list of all of the Harvard University's schools.
 The output columns are:
@@ -56,10 +51,8 @@ The output columns are:
     
     try:
         agent = MyAgent(web_scrapping_task=schools_task, 
-                        llm=llm, 
                         browser=browser, 
-                        browser_context=browser_context,
-                        context=None)
+                        browser_context=browser_context)
         await agent.run()
     finally:
         await browser.close()

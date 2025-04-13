@@ -5,10 +5,18 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: main.cpp",
+            "name": "Python Debugger: main_my_agent.py",
             "type": "debugpy",
             "request": "launch",
             "program": "main_my_agent.py",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+        {
+            "name": "Python Debugger: Old main_with_default.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main_with_default.py",
             "console": "integratedTerminal",
             "justMyCode": false
         }

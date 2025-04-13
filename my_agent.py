@@ -4,19 +4,43 @@ import json
 import os
 import logging
 from typing import Generic, Optional, Type, TypeVar
-from anthropic import Anthropic
-from langchain_anthropic import ChatAnthropic
-from langchain_openai import ChatOpenAI
 from browser_use import ActionModel, ActionResult, Agent, Browser, BrowserConfig, BrowserContextConfig, Controller
 from browser_use.browser.context import BrowserContext
 import asyncio
-from dotenv import load_dotenv
 from openai import OpenAI
+from openai.types.responses import ResponseFunctionToolCall
 from pydantic import BaseModel, ConfigDict, Field, create_model
-from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, ToolMessage, AIMessage
 
+from my_agent_tools import MyAgentTools
+
 logger = logging.getLogger(__name__)
+
+
+def get_openai_schema(model_class: Type[BaseModel]) -> dict:
+    """Generate the OpenAI format schema from a Pydantic model"""
+    # Get the base JSON schema from Pydantic
+    base_schema = model_class.model_json_schema()
+    
+    # Clean up the schema to match OpenAI's format
+    # Remove any Pydantic-specific metadata
+    if "title" in base_schema:
+        del base_schema["title"]
+    if "description" in base_schema:
+        del base_schema["description"]    
+
+    base_schema["additionalProperties"] = False
+    
+    # Transform into OpenAI format
+    openai_schema = {
+        "format": {
+            "type": "json_schema",
+            "name": model_class.__name__.lower(),
+            "schema": base_schema,
+            "strict": True
+        }
+    }
+    return openai_schema
 
 
 class AgentOutputModel(BaseModel):
@@ -25,21 +49,6 @@ class AgentOutputModel(BaseModel):
     evaluation_previous_goal: str
     memory: str
     next_goal: str
-    action: ActionModel = Field(...,  description='Action to execute')
-    
-    @staticmethod
-    def type_with_custom_action_model(custom_action_model: Type[ActionModel]) -> Type['AgentOutputModel']:
-        model = create_model(
-            'AgentOutputModel',
-            __base__ = AgentOutputModel,
-            action=(
-                custom_action_model,
-                Field(..., description='Action to execute'),
-            ),
-            __module__ = AgentOutputModel.__module__,
-            __doc__ = 'AgentOutputModel model extended with a custom action model passed as parameter'
-        )
-        return model
 
 
 class MessageManager:
@@ -78,34 +87,59 @@ class MessageManager:
 
     def get_all_messages(self) -> list[BaseMessage]:
         return self._messages
-    
 
-Context = TypeVar('Context')
+    def get_all_messages_openai_format(self) -> list[dict]:
+        """Convert internal messages to OpenAI format"""
+        openai_messages = []
+        for message in self._messages:
+            if isinstance(message, SystemMessage):
+                openai_messages.append({
+                    "role": "system",
+                    "content": message.content
+                })
+            elif isinstance(message, HumanMessage):
+                openai_messages.append({
+                    "role": "user",
+                    "content": message.content
+                })
+            elif isinstance(message, AIMessage):
+                msg = {
+                    "role": "assistant",
+                    "content": message.content
+                }
+                if hasattr(message, 'tool_calls') and message.tool_calls:
+                    msg["tool_calls"] = message.tool_calls
+                openai_messages.append(msg)
+            elif isinstance(message, ToolMessage):
+                openai_messages.append({
+                    "role": "tool",
+                    "content": message.content,
+                    "tool_call_id": message.tool_call_id
+                })
+        return openai_messages
 
-class MyAgent(Generic[Context]):
+
+class MyAgent():
     def __init__(self, 
                  web_scrapping_task: str,
-                 llm: BaseChatModel, 
                  browser: Browser, 
                  browser_context: BrowserContext,
-                 context: Context,
                  ):
         self.web_scrapping_task = web_scrapping_task
-        self.llm = llm
         self.browser = browser
         self.browser_context = browser_context
-        self.context = context
-        self.controller: Controller[Context]= Controller()
+
+        self.openai_client = OpenAI()
+
+        self.my_agent_tools = MyAgentTools(browser_context=self.browser_context, openai_client=self.openai_client)
+        self.tools_schema = self.my_agent_tools.get_tools_schema()
+
         self.system_message = self.get_system_message()
         self.message_manager = MessageManager(system_message=self.system_message)
 
         first_human_message = HumanMessage(content=f'Your Web Scrapping task is:\n"""{self.web_scrapping_task}"""')
         self.message_manager.add_human_message(message=first_human_message)
         
-        custom_action_model = self.controller.registry.create_action_model()
-        self.agent_output_model = AgentOutputModel.type_with_custom_action_model(custom_action_model=custom_action_model)
-
-        self.openai_client = OpenAI()
 
     @staticmethod
     def get_system_message() -> SystemMessage:
@@ -126,70 +160,49 @@ class MyAgent(Generic[Context]):
         
         browser_state = await self.browser_context.get_state()
 
-        all_messages: list[BaseMessage] = self.message_manager.get_all_messages()
-
-        structured_llm = self.llm.with_structured_output(schema=self.agent_output_model, 
-                                                         include_raw=True,
-                                                         method='function_calling')
+        # Prepare messages with screenshot
+        messages = self.message_manager.get_all_messages_openai_format()
         
-        llm_output = await structured_llm.ainvoke(all_messages)
-        agent_output_model = llm_output['parsed']
+        messages.append({
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'input_text',
+                    'text': 'Here is a screenshot of the current state of the browser:'
+                },
+                {
+                    'type': 'input_image',
+                    'image_url': f"data:image/png;base64,{browser_state.screenshot}",
+                    "detail": "high"
+                }
+            ]
+        })
 
-        logger.info(f"Step {step_number}, Agent output model:\n{agent_output_model.model_dump_json(indent=2, exclude_unset=True)}")
-        self.message_manager.add_agent_model_output(agent_output_model=agent_output_model)
+        output_schema = get_openai_schema(AgentOutputModel)
 
-        await self.browser_context.remove_highlights()
+        response = self.openai_client.responses.create(
+            model="gpt-4o",
+            input=messages,
+            text=output_schema,
+            tools=self.tools_schema,
+            tool_choice="required",         # Auto, none, or just one particular tool
+            parallel_tool_calls=False,
+            store=False
+        )
 
         # ACT!
-        action_result = await self.act(action=agent_output_model.action)
+        if len(response.output) != 1:
+            raise ValueError(f"Expected 1 tool call, got {len(response.output)}")
+        
+        if not isinstance(response.output[0], ResponseFunctionToolCall):
+            raise ValueError(f"The response must be a function call:\n{json.dumps(response.output[0], indent=2)}")
+
+        function_tool_call: ResponseFunctionToolCall = response.output[0]
+        logger.info(f"Step {step_number}, Action:\n{function_tool_call.to_json()}")      
+        
+        action_result = await self.my_agent_tools.execute_tool(function_tool_call=function_tool_call)
+
         logger.info(f'Action result: {action_result.extracted_content}')
         self.message_manager.add_action_result(action_result=action_result)
-        
-
-    async def act(self, action: ActionModel) -> ActionResult:
-        action_result = await self.controller.act(
-            action=action,
-            browser_context=self.browser_context,
-            page_extraction_llm=self.llm,
-            sensitive_data=None,
-            available_file_paths=None,
-            context=self.context,
-        )    
-        return action_result
-
-
-    async def multi_act(self, actions: list[ActionModel], check_for_new_elements: bool) -> list[ActionResult]:
-        action_results = []
-
-        cached_selector_map = await self.browser_context.get_selector_map()
-        cached_path_hashes = set(e.hash.branch_path_hash for e in cached_selector_map.values())
-
-        for i, action in enumerate(actions):
-            # Hash all elements. if it is a subset of cached_state its fine - else there are new elements on page.
-            # Inform for the moment. It was "break" in the original code.
-            new_state = await self.browser_context.get_state()
-            new_path_hashes = set(e.hash.branch_path_hash for e in new_state.selector_map.values())
-            if check_for_new_elements and not new_path_hashes.issubset(cached_path_hashes):
-                logger.info(f'Something new appeared after action {i} of {len(actions)}')
-                
-            action_result = await self.controller.act(
-                action=action,
-                browser_context=self.browser_context,
-                page_extraction_llm=self.llm,
-                sensitive_data=None,
-                available_file_paths=None,
-                context=self.context,
-            )
-
-            action_results.append(action_result)
-
-            logger.info(f'Executed action {i + 1} of {len(actions)}')
-            if action_results[-1].is_done or action_results[-1].error or i == len(actions) - 1:
-                break
-
-            await asyncio.sleep(self.browser_context.config.wait_between_actions)
-
-        return action_results
-        
         
         
