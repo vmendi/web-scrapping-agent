@@ -18,18 +18,6 @@ logging.getLogger('browser_use').setLevel(logging.DEBUG)
 
 load_dotenv()
 
-async def list_available_openai_models():
-    # Create an OpenAI client using the API key from environment variables
-    client = openai.OpenAI()
-    
-    # List available models
-    models = client.models.list()
-    
-    # Print model IDs
-    print("Available models:")
-    for model in models.data:
-        print(f"- {model.id}")
-
 
 async def list_available_anthropic_models():
     client = Anthropic()

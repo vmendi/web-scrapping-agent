@@ -15,12 +15,20 @@ import openai
 from pydantic import BaseModel, ConfigDict, Field, create_model
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, ToolMessage, AIMessage
-from my_agent import MyAgent
+from my_navigator_agent import MyNavigatorAgent
+from my_planner_agent import MyPlannerAgent
 
 # logging.getLogger('browser_use').setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
+
+def list_available_openai_models():
+    client = openai.OpenAI()
+    models = client.models.list()
+    print("Available models:")
+    for model in models.data:
+        print(f"- {model.id}")
 
 
 async def main():
@@ -41,22 +49,16 @@ async def main():
 
     browser = Browser(config=config)
     browser_context = await browser.new_context(config=browser_context_config)
-
-    schools_task = f"""
-Get a list of all of the Harvard University's schools.
-The output columns are:
-    School Name,
-    School Website URL.
-"""
     
     try:
-        agent = MyAgent(web_scrapping_task=schools_task, 
-                        browser=browser, 
-                        browser_context=browser_context)
+        agent = MyNavigatorAgent(browser=browser, 
+                                 browser_context=browser_context)
+        # agent = MyPlannerAgent(browser=browser, 
+        #                        browser_context=browser_context)
         await agent.run()
     finally:
         await browser.close()
 
 
-
+# list_available_openai_models()
 asyncio.run(main())

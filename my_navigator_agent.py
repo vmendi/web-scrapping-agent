@@ -13,40 +13,13 @@ from openai.types.responses import ResponseFunctionToolCall
 from pydantic import BaseModel, ConfigDict, Field, create_model
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, ToolMessage, AIMessage
 
-from my_agent_tools import MyAgentTools
+from my_navigator_agent_tools import MyAgentTools
+import my_utils
 
 logger = logging.getLogger(__name__)
 
 
-def get_openai_schema(model_class: Type[BaseModel]) -> dict:
-    """Generate the OpenAI format schema from a Pydantic model"""
-    # Get the base JSON schema from Pydantic
-    base_schema = model_class.model_json_schema()
-    
-    # Clean up the schema to match OpenAI's format
-    # Remove any Pydantic-specific metadata
-    if "title" in base_schema:
-        del base_schema["title"]
-    if "description" in base_schema:
-        del base_schema["description"]    
-
-    base_schema["additionalProperties"] = False
-    
-    # Transform into OpenAI format
-    openai_schema = {
-        "format": {
-            "type": "json_schema",
-            "name": model_class.__name__.lower(),
-            "schema": base_schema,
-            "strict": True
-        }
-    }
-    return openai_schema
-
-
-class AgentOutputModel(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
+class NavigatorAgentOutputModel(BaseModel):
     evaluation_previous_goal: str
     memory: str
     next_goal: str
@@ -66,7 +39,7 @@ class MessageManager:
     def add_ai_message(self, message: AIMessage):
         self._messages.append(message)
 
-    def add_agent_model_output(self, agent_output_model: AgentOutputModel):
+    def add_agent_model_output(self, agent_output_model: NavigatorAgentOutputModel):
         self._messages.append(AIMessage(
             content='',
             tool_calls=[
@@ -120,13 +93,11 @@ class MessageManager:
         return openai_messages
 
 
-class MyAgent():
+class MyNavigatorAgent():
     def __init__(self, 
-                 web_scrapping_task: str,
                  browser: Browser, 
                  browser_context: BrowserContext,
                  ):
-        self.web_scrapping_task = web_scrapping_task
         self.browser = browser
         self.browser_context = browser_context
 
@@ -135,20 +106,52 @@ class MyAgent():
         self.my_agent_tools = MyAgentTools(browser_context=self.browser_context, 
                                            openai_client=self.openai_client)
         
-        self.output_schema = get_openai_schema(AgentOutputModel)
+        self.output_schema = my_utils.convert_pydantic_model_to_openai_output_schema(NavigatorAgentOutputModel)
         
         self.system_message = self.get_system_message()
         self.message_manager = MessageManager(system_message=self.system_message)
-
-        first_human_message = HumanMessage(content=f'Your Web Scrapping task is:\n"""{self.web_scrapping_task}"""')
-        self.message_manager.add_human_message(message=first_human_message)
+        self.message_manager.add_human_message(message=HumanMessage(content=f"{self.get_web_scrapping_task()}"))
         
 
     @staticmethod
     def get_system_message() -> SystemMessage:
-        with open("my_agent_system_prompt_00.md", "r") as f:
+        with open("my_navigator_agent_system_prompt_00.md", "r") as f:
             system_prompt = f.read()
             return SystemMessage(content=system_prompt)
+        
+    @staticmethod
+    def get_web_scrapping_task() -> str:
+        return """
+"plan": [
+    {
+      "step_id": 1,
+      "goal": "Perform web searches to find the single most authoritative webpage listing Harvard University's primary academic schools.",
+      "input_hints": [
+        "search: Harvard University primary academic schools",
+        "search: Harvard University list of schools",
+        "search: Harvard University degree programs",
+        "look for: navigation links like 'Academics', 'Schools', 'Admissions' on potential university homepages"
+      ],
+      "output_criteria": "Output the single URL identified as the most likely official directory or listing page for Harvard University's primary schools."
+    },
+    {
+      "step_id": 2,
+      "goal": "Navigate to the URL identified in Step 1 and locate the main section or list containing representations of the primary academic schools.",
+      "input_hints": [
+        "look for: main content sections with headings like 'Schools', 'Our Schools', 'Academic Divisions', 'Degree Programs'",
+        "identify: patterns of repeating elements where each seems to represent a school (e.g., name with a link)",
+        "apply constraint: focus on lists clearly representing major degree-granting academic divisions, differentiating from lists of departments, centers, or institutes"
+      ],
+      "output_criteria": "Report the final URL and provide a clear description or context for the primary page region (e.g., container element, section) holding the school list"
+    },
+    {
+      "step_id": 3,
+      "goal": "Persist the list of schools by using extract_content tool",
+      "input_hints": [],
+      "output_criteria": ""
+    }
+  ]
+"""
 
     async def run(self, max_steps: int = 1000):
         logger.info(f'Starting task: {self.web_scrapping_task}')
@@ -167,11 +170,14 @@ class MyAgent():
         messages = self.message_manager.get_all_messages_openai_format()
 
         # Add current state as the last message in the list before calling the model. We don't store it in the message manager 
-        # on purpose. It's just state. If the model wants to memorize anything, it will write it to its memory.
+        # on purpose: It's just transitory state. If the model wants to memorize anything, it will write it to its memory.
         messages.extend(self.get_current_state_message(current_step=step_number, browser_state=browser_state))
         
         response = self.openai_client.responses.create(
-            model="gpt-4o",
+            # model="gpt-4.1-nano",
+            # model="gpt-4.1-mini",
+            model="gpt-4.1",
+            # reasoning={"effort": "high"},
             input=messages,
             text=self.output_schema,
             tools=self.my_agent_tools.tools_schema,
