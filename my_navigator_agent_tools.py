@@ -18,11 +18,12 @@ logger = logging.getLogger(__name__)
 
 
 class ActionResult(BaseModel):
-    success: bool = True                    # Success from the point of view of the action, but 
-                                            # we don't know if semantically it was successful or not. 
-                                            # The agent will decide that by looking at the new context after the action.
-    action_result_msg: str = None           # A message to return to the agent in either case of success or failure.
-    include_in_context: bool = False        # whether to include in the agent's context the action result or not
+    # Success from the point of view of the action, but we don't know if semantically it was successful or not. 
+    # The agent will decide that by looking at the new current state after the action.
+    success: bool = True
+
+    # A message to return to the agent in either case of success or failure.
+    action_result_msg: str = None           
     
     is_done: Optional[bool] = False    
     extracted_content: Optional[str] = None
@@ -46,7 +47,6 @@ async def done(ctx: RunContextWrapper[MyToolContext], success: bool, message_to_
     """	
     return ActionResult(action_result_msg=message_to_user, 
                         success=success, 
-                        include_in_context=True,
                         is_done=True)
 
 
@@ -62,9 +62,8 @@ async def search_google(ctx: RunContextWrapper[MyToolContext], query: str) -> Ac
     page = await ctx.browser_context.get_current_page()
     await page.goto(f'https://www.google.com/search?q={query}&udm=14')
     await page.wait_for_load_state()
-    return ActionResult(action_result_msg=f'Searched for "{query}" in Google',
-                        success=True,
-                        include_in_context=True)
+    return ActionResult(action_result_msg=f'Searched for "{query}" using Google',
+                        success=True)
 
 
 async def wait(ctx: RunContextWrapper[MyToolContext], seconds: int) -> ActionResult:
@@ -79,8 +78,7 @@ async def wait(ctx: RunContextWrapper[MyToolContext], seconds: int) -> ActionRes
     logger.info(f'Waiting for {seconds} seconds...')
     await asyncio.sleep(seconds)
     return ActionResult(action_result_msg=f'Waited for {seconds} seconds',
-                        success=True,
-                        include_in_context=True)
+                        success=True)
 
 
 async def go_back(ctx: RunContextWrapper[MyToolContext]) -> ActionResult:
@@ -91,8 +89,7 @@ async def go_back(ctx: RunContextWrapper[MyToolContext]) -> ActionResult:
     """
     await ctx.browser_context.go_back()
     return ActionResult(action_result_msg='Navigated back', 
-                        success=True,
-                        include_in_context=True)
+                        success=True)
 
 
 async def go_to_url(ctx: RunContextWrapper[MyToolContext], url: str) -> ActionResult:
@@ -108,8 +105,7 @@ async def go_to_url(ctx: RunContextWrapper[MyToolContext], url: str) -> ActionRe
     await page.goto(url)
     await page.wait_for_load_state()
     return ActionResult(action_result_msg=f'Navigated to {url}', 
-                        success=True,
-                        include_in_context=True)
+                        success=True)
 
 
 async def input_text(ctx: RunContextWrapper[MyToolContext], index: int, text: str) -> ActionResult:
@@ -129,8 +125,7 @@ async def input_text(ctx: RunContextWrapper[MyToolContext], index: int, text: st
     await ctx.browser_context._input_text_element_node(element_node, text)
 
     return ActionResult(action_result_msg=f'Input {text} into index {index}', 
-                        success=True,
-                        include_in_context=True)
+                        success=True)
 
 
 async def click_element(ctx: RunContextWrapper[MyToolContext], index: int) -> ActionResult:
@@ -154,8 +149,7 @@ async def click_element(ctx: RunContextWrapper[MyToolContext], index: int) -> Ac
     if await ctx.browser_context.is_file_uploader(element_node):
         return ActionResult(action_result_msg="Index {index} - has an element which opens file upload dialog. " +
                                               "To upload files please use a specific function to upload files", 
-                            success=False,
-                            include_in_context=True)
+                            success=False)
 
     try:
         download_path = await ctx.browser_context._click_element_node(element_node)
@@ -171,12 +165,10 @@ async def click_element(ctx: RunContextWrapper[MyToolContext], index: int) -> Ac
             await ctx.browser_context.switch_to_tab(-1)
         
         return ActionResult(action_result_msg=msg,
-                            success=True,
-                            include_in_context=True)
+                            success=True)
     except Exception as e:
         return ActionResult(action_result_msg=f"Element not clickable with index {index} - most likely the page changed. Exception\n: {str(e)}",
-                            success=False,
-                            include_in_context=True)
+                            success=False)
 
 
 async def open_tab(ctx: RunContextWrapper[MyToolContext], url: str) -> ActionResult:
@@ -191,8 +183,7 @@ async def open_tab(ctx: RunContextWrapper[MyToolContext], url: str) -> ActionRes
     await ctx.browser_context.create_new_tab(url)
 
     return ActionResult(action_result_msg=f'Opened new tab with {url}', 
-                        success=True,
-                        include_in_context=True)
+                        success=True)
 
 
 async def switch_tab(ctx: RunContextWrapper[MyToolContext], page_id: int) -> ActionResult:
@@ -210,8 +201,7 @@ async def switch_tab(ctx: RunContextWrapper[MyToolContext], page_id: int) -> Act
     await page.wait_for_load_state()
     
     return ActionResult(action_result_msg=f'Switched to tab {page_id}',
-                        success=True,
-                        include_in_context=True)
+                        success=True)
 
 
 async def extract_content(ctx: RunContextWrapper[MyToolContext], goal: str) -> ActionResult:
@@ -235,13 +225,11 @@ async def extract_content(ctx: RunContextWrapper[MyToolContext], goal: str) -> A
     try:
         return ActionResult(action_result_msg=f"Content extracted from page",
                             extracted_content="TODO",
-                            success=True,
-                            include_in_context=True)
+                            success=True)
     except Exception as e:
         return ActionResult(action_result_msg=f"Error extracting from page, Exception:\n{str(e)}",
                             extracted_content=None,
-                            success=False,
-                            include_in_context=True)
+                            success=False)
 
 
 async def scroll_down(ctx: RunContextWrapper[MyToolContext], amount: int) -> ActionResult:
@@ -261,8 +249,7 @@ async def scroll_down(ctx: RunContextWrapper[MyToolContext], amount: int) -> Act
 
     amount_str = f'{amount} pixels' if amount != 0 else 'one page'
     return ActionResult(action_result_msg=f'Scrolled down the page by {amount_str}', 
-                        success=True,
-                        include_in_context=True)
+                        success=True)
 
 
 async def scroll_up(ctx: RunContextWrapper[MyToolContext], amount: int) -> ActionResult:
@@ -282,8 +269,7 @@ async def scroll_up(ctx: RunContextWrapper[MyToolContext], amount: int) -> Actio
 
     amount_str = f'{amount} pixels' if amount != 0 else 'one page'
     return ActionResult(action_result_msg=f'Scrolled up the page by {amount_str}', 
-                        success=True,
-                        include_in_context=True)
+                        success=True)
 
 
 async def send_keys(ctx: RunContextWrapper[MyToolContext], keys: str) -> ActionResult:
@@ -310,8 +296,7 @@ async def send_keys(ctx: RunContextWrapper[MyToolContext], keys: str) -> ActionR
             raise e
     
     return ActionResult(action_result_msg=f'Sent keys: {keys}',
-                        success=True,
-                        include_in_context=True)
+                        success=True)
 
 
 async def scroll_to_text(ctx: RunContextWrapper[MyToolContext], text: str) -> ActionResult:
@@ -339,20 +324,17 @@ async def scroll_to_text(ctx: RunContextWrapper[MyToolContext], text: str) -> Ac
                     await locator.first.scroll_into_view_if_needed()
                     await asyncio.sleep(0.5)  # Wait for scroll to complete
                     return ActionResult(action_result_msg=f'Scrolled to text: {text}',
-                                        success=True,
-                                        include_in_context=True)
+                                        success=True)
             except Exception as e:
                 logger.error(f'Locator attempt failed: {str(e)}')
                 continue
 
         return ActionResult(action_result_msg=f"Text '{text}' not found or not visible on page",
-                            success=False,
-                            include_in_context=True)
+                            success=False)
 
     except Exception as e:
         return ActionResult(action_result_msg=f"Failed to scroll to text '{text}': {str(e)}",
-                            success=False,
-                            include_in_context=True)
+                            success=False)
 
 
 async def get_dropdown_options(ctx: RunContextWrapper[MyToolContext], index: int) -> ActionResult:
@@ -417,18 +399,15 @@ async def get_dropdown_options(ctx: RunContextWrapper[MyToolContext], index: int
             msg = '\n'.join(all_options)
             msg += '\nUse the exact text string in select_dropdown_option'
             return ActionResult(action_result_msg=msg,
-                                success=True,
-                                include_in_context=True)
+                                success=True)
         else:
             msg = 'No options found in any frame for dropdown'
             return ActionResult(action_result_msg=msg,
-                                success=False,
-                                include_in_context=True)
+                                success=False)
 
     except Exception as e:
         return ActionResult(action_result_msg=f'Error getting options: {str(e)}',
-                            success=False,
-                            include_in_context=True)
+                            success=False)
 
 
 async def select_dropdown_option(ctx: RunContextWrapper[MyToolContext], index: int, text: str) -> ActionResult:
@@ -448,8 +427,7 @@ async def select_dropdown_option(ctx: RunContextWrapper[MyToolContext], index: i
     # Validate that we're working with a select element
     if dom_element.tag_name != 'select':
         return ActionResult(action_result_msg=f'Cannot select option: Element with index {index} is a {dom_element.tag_name}, not a select',
-                            success=False,
-                            include_in_context=True)
+                            success=False)
 
     logger.debug(f"Attempting to select '{text}' using xpath: {dom_element.xpath}")
     logger.debug(f'Element attributes: {dom_element.attributes}')
@@ -508,8 +486,7 @@ async def select_dropdown_option(ctx: RunContextWrapper[MyToolContext], index: i
                     )
 
                     return ActionResult(action_result_msg=f'Selected option {text} with value {selected_option_values}',
-                                        success=True,
-                                        include_in_context=True)
+                                        success=True)
 
             except Exception as frame_e:
                 logger.error(f'Frame {frame_index} attempt failed: {str(frame_e)}')
@@ -519,13 +496,11 @@ async def select_dropdown_option(ctx: RunContextWrapper[MyToolContext], index: i
             frame_index += 1
 
         return ActionResult(action_result_msg=f"Could not select option '{text}' in any frame",
-                            success=False,
-                            include_in_context=True)
+                            success=False)
 
     except Exception as e:
         return ActionResult(action_result_msg=f'Selection failed: {str(e)}',
-                            success=False,
-                            include_in_context=True)
+                            success=False)
 
 
 class MyAgentTools():
@@ -572,8 +547,7 @@ class MyAgentTools():
         tool = next((t for t in self.tools if t.__name__ == tool_name), None)
         if not tool:
             return ActionResult(action_result_msg=f"Tool '{tool_name}' not found",
-                                success=False,
-                                include_in_context=True)
+                                success=False)
         
         tool_args = json.loads(function_tool_call.arguments)
 

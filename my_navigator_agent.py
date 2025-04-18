@@ -9,9 +9,9 @@ from browser_use.browser.context import BrowserContext
 from browser_use.browser.views import BrowserState
 import asyncio
 from openai import OpenAI
-from openai.types.responses import ResponseFunctionToolCall
+from openai.types.responses import ResponseFunctionToolCall, ResponseOutputMessage
 from pydantic import BaseModel, ConfigDict, Field, create_model
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, ToolMessage, AIMessage
+import pprint
 
 from my_navigator_agent_tools import MyAgentTools
 import my_utils
@@ -20,77 +20,96 @@ logger = logging.getLogger(__name__)
 
 
 class NavigatorAgentOutputModel(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+     
     evaluation_previous_goal: str
     memory: str
     next_goal: str
 
 
 class MessageManager:
-    def __init__(self, system_message: SystemMessage):
-        self._messages = [system_message]
-        self._tool_id = 0
+    def __init__(self, system_message_content: str):
+        self._messages: list[dict] = [{
+            "role": "system",
+            "content": system_message_content
+        }]
 
-    def add_message(self, message: BaseMessage):
-        self._messages.append(message)
+    def add_user_message(self, content: str):
+        """Adds a user (human) message."""
+        self._messages.append({
+            "role": "user",
+            "content": content
+        })
 
-    def add_human_message(self, message: HumanMessage):
-        self._messages.append(message)
+    def add_ai_message(self, content: str):
+        self._messages.append({
+            "role": "assistant",
+            "content": content,
+        })
 
-    def add_ai_message(self, message: AIMessage):
-        self._messages.append(message)
+    def add_ai_function_tool_call_message(self, function_tool_call: ResponseFunctionToolCall):
+        """Adds an a message that contains a function tool call that the model wants to execute."""
+        self._messages.append({
+            "type": "function_call",
+            "call_id": function_tool_call.call_id,
+            "name": function_tool_call.name,
+            "arguments": function_tool_call.arguments
+        })
 
-    def add_agent_model_output(self, agent_output_model: NavigatorAgentOutputModel):
-        self._messages.append(AIMessage(
-            content='',
-            tool_calls=[
-                {
-                    'name': 'AgentOutputModel',
-                    'args': agent_output_model.model_dump(mode='json', exclude_unset=True),
-                    'id': str(self._tool_id),
-                    'type': 'tool_call',
-                }
-            ]
-        ))
-            
-    def add_action_result(self, action_result: ActionResult):
-        self._messages.append(ToolMessage(
-            content=f'Action result: {action_result.extracted_content}',
-            name='ActionResult',
-            tool_call_id=str(self._tool_id),
-        ))
+    def add_tool_result_message(self, result_message: str, tool_call_id: str):
+        """Adds the result message of a tool call."""
+        self._messages.append({
+            "type": "function_call_output",
+            "call_id": tool_call_id,
+            "output": result_message
+        })
 
-    def get_all_messages(self) -> list[BaseMessage]:
+    def get_messages(self) -> list[dict]:
         return self._messages
 
-    def get_all_messages_openai_format(self) -> list[dict]:
-        """Convert internal messages to OpenAI format"""
-        openai_messages = []
-        for message in self._messages:
-            if isinstance(message, SystemMessage):
-                openai_messages.append({
-                    "role": "system",
-                    "content": message.content
-                })
-            elif isinstance(message, HumanMessage):
-                openai_messages.append({
-                    "role": "user",
-                    "content": message.content
-                })
-            elif isinstance(message, AIMessage):
-                msg = {
-                    "role": "assistant",
-                    "content": message.content
-                }
-                if hasattr(message, 'tool_calls') and message.tool_calls:
-                    msg["tool_calls"] = message.tool_calls
-                openai_messages.append(msg)
-            elif isinstance(message, ToolMessage):
-                openai_messages.append({
-                    "role": "tool",
-                    "content": message.content,
-                    "tool_call_id": message.tool_call_id
-                })
-        return openai_messages
+    @staticmethod
+    def log_messages(messages: list[dict], step_number: int):
+        messages_for_log = messages.copy()       
+        
+        # Let's build the message log in a format amenable for human reading
+        formatted_messages = []
+        for message in messages_for_log:
+            if not isinstance(message, dict):
+                formatted_messages.append(f"Unknown message type: {message}")
+                continue
+            
+            if 'role' in message:                
+                role = message.get('role', 'unknown')
+                content = message.get('content', 'empty')
+                if isinstance(content, list):
+                    for item in content:
+                        if not isinstance(item, dict):
+                            content = f"Unknown content type: {item}"
+                            continue
+                        if item.get('type') == 'input_text':
+                            content = item.get('content', 'unknown')
+                        elif item.get('type') == 'input_image':
+                            content = f"Image URL: Redacted"
+                formatted_messages.append(f"\n---------------------- role:{role} ----------------------\n{content}")
+            elif 'type' in message:
+                type = message.get('type', 'unknown')
+                if type == 'function_call':
+                    content = (f"call_id: {message.get('call_id', 'unknown')}\n"
+                              f"name: {message.get('name', 'unknown')}\n"
+                              f"arguments: {message.get('arguments', 'unknown')}")
+                elif type == 'function_call_output':
+                    content = (f"call_id: {message.get('call_id', 'unknown')}\n"
+                              f"output: {message.get('output', 'unknown')}")
+                else:
+                    content = f"Unknown type: {type}"
+                formatted_messages.append(f"\n---------------------- type:{type} ----------------------\n{content}")
+            else:
+                formatted_messages.append(f"Unknown message format: {message}")
+                
+        formatted_messages_str = "\n\n".join(formatted_messages)
+        logger.info(f"---------------------- Step {step_number} messages ----------------------\n"
+                    f"{formatted_messages_str}\n\n"
+                    f"---------------------- Step {step_number} end of messages ----------------------\n")
 
 
 class MyNavigatorAgent():
@@ -108,53 +127,56 @@ class MyNavigatorAgent():
         
         self.output_schema = my_utils.convert_pydantic_model_to_openai_output_schema(NavigatorAgentOutputModel)
         
-        self.system_message = self.get_system_message()
-        self.message_manager = MessageManager(system_message=self.system_message)
-        self.message_manager.add_human_message(message=HumanMessage(content=f"{self.get_web_scrapping_task()}"))
-        
+        self.message_manager = MessageManager(system_message_content=self.get_system_message())
+        self.message_manager.add_user_message(content=self.get_web_scrapping_task())
 
     @staticmethod
-    def get_system_message() -> SystemMessage:
+    def get_system_message() -> str:
         with open("my_navigator_agent_system_prompt_00.md", "r") as f:
             system_prompt = f.read()
-            return SystemMessage(content=system_prompt)
+            return system_prompt
         
     @staticmethod
     def get_web_scrapping_task() -> str:
-        return """
-"plan": [
-    {
-      "step_id": 1,
-      "goal": "Perform web searches to find the single most authoritative webpage listing Harvard University's primary academic schools.",
-      "input_hints": [
-        "search: Harvard University primary academic schools",
-        "search: Harvard University list of schools",
-        "search: Harvard University degree programs",
-        "look for: navigation links like 'Academics', 'Schools', 'Admissions' on potential university homepages"
-      ],
-      "output_criteria": "Output the single URL identified as the most likely official directory or listing page for Harvard University's primary schools."
-    },
-    {
-      "step_id": 2,
-      "goal": "Navigate to the URL identified in Step 1 and locate the main section or list containing representations of the primary academic schools.",
-      "input_hints": [
-        "look for: main content sections with headings like 'Schools', 'Our Schools', 'Academic Divisions', 'Degree Programs'",
-        "identify: patterns of repeating elements where each seems to represent a school (e.g., name with a link)",
-        "apply constraint: focus on lists clearly representing major degree-granting academic divisions, differentiating from lists of departments, centers, or institutes"
-      ],
-      "output_criteria": "Report the final URL and provide a clear description or context for the primary page region (e.g., container element, section) holding the school list"
-    },
-    {
-      "step_id": 3,
-      "goal": "Persist the list of schools by using extract_content tool",
-      "input_hints": [],
-      "output_criteria": ""
-    }
-  ]
+        return """Get a list of all of the Harvard University's schools.
+The output columns are:
+    School Name,
+    School Website URL.
 """
+#         return """
+# "plan": [
+#     {
+#       "step_id": 1,
+#       "goal": "Perform web searches to find the single most authoritative webpage listing Harvard University's primary academic schools.",
+#       "input_hints": [
+#         "search: Harvard University primary academic schools",
+#         "search: Harvard University list of schools",
+#         "search: Harvard University degree programs",
+#         "look for: navigation links like 'Academics', 'Schools', 'Admissions' on potential university homepages"
+#       ],
+#       "output_criteria": "Output the single URL identified as the most likely official directory or listing page for Harvard University's primary schools."
+#     },
+#     {
+#       "step_id": 2,
+#       "goal": "Navigate to the URL identified in Step 1 and locate the main section or list containing representations of the primary academic schools.",
+#       "input_hints": [
+#         "look for: main content sections with headings like 'Schools', 'Our Schools', 'Academic Divisions', 'Degree Programs'",
+#         "identify: patterns of repeating elements where each seems to represent a school (e.g., name with a link)",
+#         "apply constraint: focus on lists clearly representing major degree-granting academic divisions, differentiating from lists of departments, centers, or institutes"
+#       ],
+#       "output_criteria": "Report the final URL and provide a clear description or context for the primary page region (e.g., container element, section) holding the school list"
+#     },
+#     {
+#       "step_id": 3,
+#       "goal": "Persist the list of schools by using extract_content tool",
+#       "input_hints": [],
+#       "output_criteria": ""
+#     }
+#   ]
+# """
 
     async def run(self, max_steps: int = 1000):
-        logger.info(f'Starting task: {self.web_scrapping_task}')
+        logger.info(f'Starting navigator agent task')
         
         for step_number in range(max_steps):
             await self.step(step_number=step_number, max_steps=max_steps)
@@ -162,44 +184,59 @@ class MyNavigatorAgent():
         logger.info(f'Task completed')
     
     async def step(self, step_number: int, max_steps: int):
-        logger.info(f'Step {step_number} of {max_steps}')
+        logger.info(f'----------------------------------- Step {step_number} of {max_steps} -----------------------------------')
         
         browser_state = await self.browser_context.get_state()
         self.save_screenshot(browser_state.screenshot, step_number)
 
-        messages = self.message_manager.get_all_messages_openai_format()
+        messages = self.message_manager.get_messages()
 
         # Add current state as the last message in the list before calling the model. We don't store it in the message manager 
         # on purpose: It's just transitory state. If the model wants to memorize anything, it will write it to its memory.
         messages.extend(self.get_current_state_message(current_step=step_number, browser_state=browser_state))
-        
+        MessageManager.log_messages(messages, step_number)
+                                
         response = self.openai_client.responses.create(
             # model="gpt-4.1-nano",
             # model="gpt-4.1-mini",
-            model="gpt-4.1",
-            # reasoning={"effort": "high"},
+            # model="gpt-4.1",
+            # model="o3",
+            model="o4-mini",
+            reasoning={"effort": "medium"},
             input=messages,
             text=self.output_schema,
             tools=self.my_agent_tools.tools_schema,
-            tool_choice="required",         # Auto, none, or just one particular tool
+            tool_choice="auto",         # auto, required, none, or just one particular tool. If required, we dont get output text.
             parallel_tool_calls=False,
             store=False
         )
 
-        # ACT!
-        if len(response.output) != 1:
-            raise ValueError(f"Expected 1 tool call, got {len(response.output)}")
-        
-        if not isinstance(response.output[0], ResponseFunctionToolCall):
-            raise ValueError(f"The response must be a function call:\n{json.dumps(response.output[0], indent=2)}")
+        await self.browser_context.remove_highlights()
 
-        function_tool_call: ResponseFunctionToolCall = response.output[0]
-        logger.info(f"Step {step_number}, Action:\n{function_tool_call.to_json()}")      
-        
-        action_result = await self.my_agent_tools.execute_tool(function_tool_call=function_tool_call)
+        # ACT!        
+        if response.output_text:
+            navigator_agent_output = json.loads(response.output_text)
+            self.message_manager.add_ai_message(content=json.dumps(navigator_agent_output, indent=2))
+            logger.info(f"Step {step_number}, Response Message:\n{json.dumps(navigator_agent_output, indent=2)}")
+        else:
+            logger.info(f"Step {step_number}, Response Message is empty: The LLM didn't return any output_text. But it may have returned a function tool call.")
 
-        logger.info(f'Action result: {action_result.extracted_content}')
-        self.message_manager.add_action_result(action_result=action_result)
+        # Get the function tool call from the array of output messages
+        function_tool_call: ResponseFunctionToolCall = next((item for item in response.output if isinstance(item, ResponseFunctionToolCall)), None)
+
+        if function_tool_call:
+            self.message_manager.add_ai_function_tool_call_message(function_tool_call=function_tool_call)
+            logger.info(f"Step {step_number}, Action:\n{function_tool_call.to_json()}")
+
+            # Execute the tool
+            action_result = await self.my_agent_tools.execute_tool(function_tool_call=function_tool_call)
+            logger.info(f'Step {step_number}, Action Result: {action_result.action_result_msg}')
+            
+            # Add the tool result message using the correct tool_call_id
+            self.message_manager.add_tool_result_message(result_message=action_result.action_result_msg,
+                                                        tool_call_id=function_tool_call.call_id)
+        else:
+            logger.info(f"Step {step_number}, No function tool call in the response")
 
 
     @staticmethod
@@ -237,7 +274,7 @@ class MyNavigatorAgent():
             {
                 "role": "user",
                 "content": f"[Current state starts here]\n"
-                           f"Current step: {current_step + 1}\n"
+                           f"Current step: {current_step}\n"
                            f"Current date and time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
                            f"The following is one-time information - if you need to remember it write it to memory:\n"
                            f"Current url: {browser_state.url}\n"
@@ -291,5 +328,4 @@ class MyNavigatorAgent():
             
         logger.info(f"Screenshot saved to {filename}")
         return filename
-        
-        
+
