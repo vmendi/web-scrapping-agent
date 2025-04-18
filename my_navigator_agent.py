@@ -16,6 +16,7 @@ import pprint
 from my_navigator_agent_tools import MyAgentTools
 import my_utils
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,91 +26,6 @@ class NavigatorAgentOutputModel(BaseModel):
     evaluation_previous_goal: str
     memory: str
     next_goal: str
-
-
-class MessageManager:
-    def __init__(self, system_message_content: str):
-        self._messages: list[dict] = [{
-            "role": "system",
-            "content": system_message_content
-        }]
-
-    def add_user_message(self, content: str):
-        """Adds a user (human) message."""
-        self._messages.append({
-            "role": "user",
-            "content": content
-        })
-
-    def add_ai_message(self, content: str):
-        self._messages.append({
-            "role": "assistant",
-            "content": content,
-        })
-
-    def add_ai_function_tool_call_message(self, function_tool_call: ResponseFunctionToolCall):
-        """Adds an a message that contains a function tool call that the model wants to execute."""
-        self._messages.append({
-            "type": "function_call",
-            "call_id": function_tool_call.call_id,
-            "name": function_tool_call.name,
-            "arguments": function_tool_call.arguments
-        })
-
-    def add_tool_result_message(self, result_message: str, tool_call_id: str):
-        """Adds the result message of a tool call."""
-        self._messages.append({
-            "type": "function_call_output",
-            "call_id": tool_call_id,
-            "output": result_message
-        })
-
-    def get_messages(self) -> list[dict]:
-        return self._messages
-
-    @staticmethod
-    def log_messages(messages: list[dict], step_number: int):
-        messages_for_log = messages.copy()       
-        
-        # Let's build the message log in a format amenable for human reading
-        formatted_messages = []
-        for message in messages_for_log:
-            if not isinstance(message, dict):
-                formatted_messages.append(f"Unknown message type: {message}")
-                continue
-            
-            if 'role' in message:                
-                role = message.get('role', 'unknown')
-                content = message.get('content', 'empty')
-                if isinstance(content, list):
-                    for item in content:
-                        if not isinstance(item, dict):
-                            content = f"Unknown content type: {item}"
-                            continue
-                        if item.get('type') == 'input_text':
-                            content = item.get('content', 'unknown')
-                        elif item.get('type') == 'input_image':
-                            content = f"Image URL: Redacted"
-                formatted_messages.append(f"\n---------------------- role:{role} ----------------------\n{content}")
-            elif 'type' in message:
-                type = message.get('type', 'unknown')
-                if type == 'function_call':
-                    content = (f"call_id: {message.get('call_id', 'unknown')}\n"
-                              f"name: {message.get('name', 'unknown')}\n"
-                              f"arguments: {message.get('arguments', 'unknown')}")
-                elif type == 'function_call_output':
-                    content = (f"call_id: {message.get('call_id', 'unknown')}\n"
-                              f"output: {message.get('output', 'unknown')}")
-                else:
-                    content = f"Unknown type: {type}"
-                formatted_messages.append(f"\n---------------------- type:{type} ----------------------\n{content}")
-            else:
-                formatted_messages.append(f"Unknown message format: {message}")
-                
-        formatted_messages_str = "\n\n".join(formatted_messages)
-        logger.info(f"---------------------- Step {step_number} messages ----------------------\n"
-                    f"{formatted_messages_str}\n\n"
-                    f"---------------------- Step {step_number} end of messages ----------------------\n")
 
 
 class MyNavigatorAgent():
@@ -127,7 +43,7 @@ class MyNavigatorAgent():
         
         self.output_schema = my_utils.convert_pydantic_model_to_openai_output_schema(NavigatorAgentOutputModel)
         
-        self.message_manager = MessageManager(system_message_content=self.get_system_message())
+        self.message_manager = my_utils.MessageManager(system_message_content=self.get_system_message())
         self.message_manager.add_user_message(content=self.get_web_scrapping_task())
 
     @staticmethod
@@ -176,33 +92,47 @@ The output columns are:
 # """
 
     async def run(self, max_steps: int = 1000):
-        logger.info(f'Starting navigator agent task')
+        global_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        logger.info(f'Starting navigator agent task at {global_timestamp}')
         
         for step_number in range(max_steps):
-            await self.step(step_number=step_number, max_steps=max_steps)
-        
-        logger.info(f'Task completed')
-    
-    async def step(self, step_number: int, max_steps: int):
-        logger.info(f'----------------------------------- Step {step_number} of {max_steps} -----------------------------------')
+            is_done, is_success = await self.step(step_number=step_number, 
+                                                  max_steps=max_steps, 
+                                                  timestamp=global_timestamp)
+            if is_done:
+                logger.info(f'Task completed at step {step_number} with success: {is_success}')
+                break
+        else:
+            logger.info(f'Task failed after max {max_steps} steps')
+
+
+    async def step(self, step_number: int, max_steps: int, timestamp: str):
+        step_message = f'----------------------------------- Step {step_number} of {max_steps} -----------------------------------'
+        border_line = '-' * len(step_message)
+        logger.info(f"\n{border_line}\n{step_message}\n{border_line}")
         
         browser_state = await self.browser_context.get_state()
-        self.save_screenshot(browser_state.screenshot, step_number)
-
         messages = self.message_manager.get_messages()
-
+        
         # Add current state as the last message in the list before calling the model. We don't store it in the message manager 
         # on purpose: It's just transitory state. If the model wants to memorize anything, it will write it to its memory.
         messages.extend(self.get_current_state_message(current_step=step_number, browser_state=browser_state))
-        MessageManager.log_messages(messages, step_number)
-                                
+        
+        my_utils.MessageManager.persist_state(messages=messages, 
+                                              screenshot_base64=browser_state.screenshot, 
+                                              step_number=step_number, 
+                                              timestamp=timestamp)
+        
+        await self.browser_context.remove_highlights()
+        
+        logger.info(f"Step {step_number}, Sending messages to the model...")
         response = self.openai_client.responses.create(
             # model="gpt-4.1-nano",
             # model="gpt-4.1-mini",
             # model="gpt-4.1",
-            # model="o3",
-            model="o4-mini",
-            reasoning={"effort": "medium"},
+            model="o3",
+            # model="o4-mini",
+            reasoning={"effort": "high"},
             input=messages,
             text=self.output_schema,
             tools=self.my_agent_tools.tools_schema,
@@ -210,10 +140,12 @@ The output columns are:
             parallel_tool_calls=False,
             store=False
         )
+        logger.info(f"Step {step_number}, Received response from the model.")
+        
+        is_done = False
+        is_success = True
 
-        await self.browser_context.remove_highlights()
-
-        # ACT!        
+        # ACT!
         if response.output_text:
             navigator_agent_output = json.loads(response.output_text)
             self.message_manager.add_ai_message(content=json.dumps(navigator_agent_output, indent=2))
@@ -235,8 +167,13 @@ The output columns are:
             # Add the tool result message using the correct tool_call_id
             self.message_manager.add_tool_result_message(result_message=action_result.action_result_msg,
                                                         tool_call_id=function_tool_call.call_id)
+
+            is_done = action_result.is_done
+            is_success = action_result.success
         else:
             logger.info(f"Step {step_number}, No function tool call in the response")
+
+        return is_done, is_success
 
 
     @staticmethod
@@ -300,32 +237,3 @@ The output columns are:
                 'content': f'[Current state ends here]'
             }
         ]
-
-
-    @staticmethod
-    def save_screenshot(screenshot_base64: str, step_number: int) -> str:
-        """
-        Save the base64 encoded screenshot to disk
-        
-        Args:
-            screenshot_base64: Base64 encoded PNG image
-            step_number: Current step number for the filename
-            
-        Returns:
-            The path to the saved screenshot
-        """
-        # Create screenshots directory if it doesn't exist
-        screenshots_dir = "screenshots"
-        os.makedirs(screenshots_dir, exist_ok=True)
-        
-        # Generate filename with timestamp and step number
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{screenshots_dir}/screenshot_{timestamp}_step{step_number}.png"
-        
-        # Decode base64 and write to file
-        with open(filename, "wb") as f:
-            f.write(base64.b64decode(screenshot_base64))
-            
-        logger.info(f"Screenshot saved to {filename}")
-        return filename
-

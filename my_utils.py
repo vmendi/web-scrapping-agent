@@ -1,9 +1,10 @@
 import logging
 from typing import Type
-from browser_use import ActionResult
 from pydantic import BaseModel
 from agents import AgentOutputSchema
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, ToolMessage, AIMessage
+from openai.types.responses import ResponseFunctionToolCall
+import base64
+import os
 
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,6 @@ def convert_pydantic_model_to_openai_output_schema(model: Type[BaseModel]) -> di
     agent_output_schema = AgentOutputSchema(model, strict_json_schema=True)
     schema = agent_output_schema.json_schema()
 
-    # Construct the dictionary in the format OpenAI expects
     return {
         "format": {
             "type": "json_schema",
@@ -25,68 +25,110 @@ def convert_pydantic_model_to_openai_output_schema(model: Type[BaseModel]) -> di
 
 
 class MessageManager:
-    def __init__(self, system_message: SystemMessage):
-        self._messages = [system_message]
-        self._tool_id = 0
+    def __init__(self, system_message_content: str):
+        self._messages: list[dict] = [{
+            "role": "system",
+            "content": system_message_content
+        }]
+        
+    def add_user_message(self, content: str):
+        """Adds a user (human) message."""
+        self._messages.append({
+            "role": "user",
+            "content": content
+        })
 
-    def add_message(self, message: BaseMessage):
-        self._messages.append(message)
+    def add_ai_message(self, content: str):
+        self._messages.append({
+            "role": "assistant",
+            "content": content,
+        })
 
-    def add_human_message(self, message: HumanMessage):
-        self._messages.append(message)
+    def add_ai_function_tool_call_message(self, function_tool_call: ResponseFunctionToolCall):
+        """Adds an a message that contains a function tool call that the model wants to execute."""
+        self._messages.append({
+            "type": "function_call",
+            "call_id": function_tool_call.call_id,
+            "name": function_tool_call.name,
+            "arguments": function_tool_call.arguments
+        })
+        
+    def add_tool_result_message(self, result_message: str, tool_call_id: str):
+        """Adds the result message of a tool call."""
+        self._messages.append({
+            "type": "function_call_output",
+            "call_id": tool_call_id,
+            "output": result_message
+        })
 
-    def add_ai_message(self, message: AIMessage):
-        self._messages.append(message)
-
-    def add_agent_model_output(self, agent_output_model: BaseModel):
-        self._messages.append(AIMessage(
-            content='',
-            tool_calls=[
-                {
-                    'name': 'AgentOutputModel',
-                    'args': agent_output_model.model_dump(mode='json', exclude_unset=True),
-                    'id': str(self._tool_id),
-                    'type': 'tool_call',
-                }
-            ]
-        ))
-            
-    def add_action_result(self, action_result: ActionResult):
-        self._messages.append(ToolMessage(
-            content=f'Action result: {action_result.extracted_content}',
-            name='ActionResult',
-            tool_call_id=str(self._tool_id),
-        ))
-
-    def get_all_messages(self) -> list[BaseMessage]:
+    def get_messages(self) -> list[dict]:
         return self._messages
+    
+    @staticmethod
+    def persist_state(messages: list[dict], screenshot_base64: str, step_number: int, timestamp: str):        
+        state_dir = f"logs/{timestamp}/"
+        os.makedirs(state_dir, exist_ok=True)
+        
+        state_file_name = f"{state_dir}/step_{step_number:02d}_messages"
+        screenshot_file_name = f"{state_dir}/step_{step_number:02d}_screenshot"
 
-    def get_all_messages_openai_format(self) -> list[dict]:
-        """Convert internal messages to OpenAI format"""
-        openai_messages = []
-        for message in self._messages:
-            if isinstance(message, SystemMessage):
-                openai_messages.append({
-                    "role": "system",
-                    "content": message.content
-                })
-            elif isinstance(message, HumanMessage):
-                openai_messages.append({
-                    "role": "user",
-                    "content": message.content
-                })
-            elif isinstance(message, AIMessage):
-                msg = {
-                    "role": "assistant",
-                    "content": message.content
-                }
-                if hasattr(message, 'tool_calls') and message.tool_calls:
-                    msg["tool_calls"] = message.tool_calls
-                openai_messages.append(msg)
-            elif isinstance(message, ToolMessage):
-                openai_messages.append({
-                    "role": "tool",
-                    "content": message.content,
-                    "tool_call_id": message.tool_call_id
-                })
-        return openai_messages
+        with open(f"{state_file_name}.txt", "w") as f:
+            formatted_messages = MessageManager.get_formatted_messages(messages=messages, 
+                                                                       step_number=step_number)
+            f.write(formatted_messages)
+
+        with open(f"{screenshot_file_name}.png", "wb") as f:
+            f.write(base64.b64decode(screenshot_base64))
+
+
+    @staticmethod
+    def get_formatted_messages(messages: list[dict], step_number: int):
+        messages_for_log = messages.copy()
+
+        call_id_to_index_map: dict[str, int] = {}
+        for message in messages_for_log:
+            if message.get('type') == 'function_call':
+                call_id_to_index_map[message.get('call_id')] = len(call_id_to_index_map)
+        
+        # Let's build the message log in a format amenable for human reading
+        formatted_messages = []
+        for message in messages_for_log:
+            if not isinstance(message, dict):
+                formatted_messages.append(f"Unknown message type: {message}")
+                continue
+            
+            if 'role' in message:                
+                role = message.get('role', 'unknown')
+                content = message.get('content', 'empty')
+                if isinstance(content, list):
+                    for item in content:
+                        if not isinstance(item, dict):
+                            content = f"Unknown content type: {item}"
+                            continue
+                        if item.get('type') == 'input_text':
+                            content = item.get('content', 'unknown')
+                        elif item.get('type') == 'input_image':
+                            content = f"Image URL: Redacted"
+                formatted_messages.append(f"\n---------------------- role:{role} ----------------------\n{content}")
+            elif 'type' in message:
+                type = message.get('type', 'unknown')
+                if type == 'function_call':
+                    content = (f"call_id: {message.get('call_id', 'unknown')}\n"
+                               f"call_id_index: {call_id_to_index_map.get(message.get('call_id'), 'unknown')}\n"
+                               f"name: {message.get('name', 'unknown')}\n"
+                               f"arguments: {message.get('arguments', 'unknown')}")
+                elif type == 'function_call_output':
+                    content = (f"call_id: {message.get('call_id', 'unknown')}\n"
+                               f"call_id_index: {call_id_to_index_map.get(message.get('call_id'), 'unknown')}\n"
+                               f"output: {message.get('output', 'unknown')}")
+                else:
+                    content = f"Unknown type: {type}"
+                formatted_messages.append(f"\n---------------------- type:{type} ----------------------\n{content}")
+            else:
+                formatted_messages.append(f"Unknown message format: {message}")
+                
+        formatted_messages_str = "\n\n".join(formatted_messages)
+        formatted_messages_str = f"---------------------- Step {step_number} messages ----------------------\n" \
+                                 f"{formatted_messages_str}\n\n" \
+                                 f"---------------------- Step {step_number} end of messages ----------------------\n"
+        return formatted_messages_str

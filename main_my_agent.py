@@ -57,7 +57,10 @@ async def main():
         #                        browser_context=browser_context)
         await agent.run()
     finally:
-        await browser.close()
+        if browser_context:
+            await browser_context.close()
+        if browser:
+            await browser.close()
 
 
 # list_available_openai_models()
