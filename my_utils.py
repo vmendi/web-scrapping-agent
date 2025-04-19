@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Type
 from pydantic import BaseModel
@@ -5,6 +6,7 @@ from agents import AgentOutputSchema
 from openai.types.responses import ResponseFunctionToolCall
 import base64
 import os
+import copy
 
 
 logger = logging.getLogger(__name__)
@@ -73,16 +75,29 @@ class MessageManager:
         screenshot_file_name = f"{state_dir}/step_{step_number:02d}_screenshot"
 
         with open(f"{state_file_name}.txt", "w") as f:
-            formatted_messages = MessageManager.get_formatted_messages(messages=messages, 
+            formatted_messages = MessageManager.get_pretty_formatted_messages(messages=messages, 
                                                                        step_number=step_number)
             f.write(formatted_messages)
+
+        with open(f"{state_file_name}.json", "w") as f:
+            json.dump(MessageManager.get_json_messages(messages=messages), f, indent=2)
 
         with open(f"{screenshot_file_name}.png", "wb") as f:
             f.write(base64.b64decode(screenshot_base64))
 
 
     @staticmethod
-    def get_formatted_messages(messages: list[dict], step_number: int):
+    def get_json_messages(messages: list[dict]):
+        messages_for_json = copy.deepcopy(messages)
+        for message in messages_for_json:
+            if isinstance(message.get('content'), list):
+                for item in message['content']:
+                    if item.get('type') == 'input_image':
+                        item['image_url'] = 'REDACTED'
+        return messages_for_json
+
+    @staticmethod
+    def get_pretty_formatted_messages(messages: list[dict], step_number: int):
         messages_for_log = messages.copy()
 
         call_id_to_index_map: dict[str, int] = {}
