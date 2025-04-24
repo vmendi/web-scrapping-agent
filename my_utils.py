@@ -5,11 +5,27 @@ from pydantic import BaseModel
 from agents import AgentOutputSchema
 from openai.types.responses import ResponseFunctionToolCall
 import base64
-import os
 import copy
+from dataclasses import dataclass
+import json
+import logging
+from typing import Type
+from pydantic import BaseModel
+
+from openai import OpenAI
+from openai.types.responses import ResponseFunctionToolCall
+from browser_use.browser.context import BrowserContext
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class MyAgentContext:
+    browser_context: BrowserContext
+    openai_client: OpenAI
+    save_dir: str
+    run_id: str
 
 
 def convert_pydantic_model_to_openai_output_schema(model: Type[BaseModel]) -> dict:    
@@ -21,6 +37,48 @@ def convert_pydantic_model_to_openai_output_schema(model: Type[BaseModel]) -> di
             "type": "json_schema",
             "name": model.__name__,
             "schema": schema,
+            "strict": True
+        }
+    }
+
+
+def convert_simplified_schema_to_openai_output_schema(row_schema: str) -> dict:
+    """Convert a simplified schema (where keys are field names and values are types) into a proper OpenAI output schema.
+    
+    Args:
+        row_schema: str - A JSON string containing a simplified schema where keys are field names and values are types.
+            Example: {"some_name": "string", "the_age": "integer"}
+            
+    Returns:
+        dict - A properly formatted OpenAI output schema
+    """
+    row_schema_dict = json.loads(row_schema)
+
+    # Convert the simplified schema to proper JSON schema format
+    properties = {}
+    for key, type_str in row_schema_dict.items():
+        properties[key] = {"type": type_str}
+            
+    return {
+        "format": {
+            "type": "json_schema",
+            "name": "ExtractedRows",
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "rows": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": properties,
+                            "required": list(properties.keys()),
+                            "additionalProperties": False
+                        }
+                    }
+                },
+                "required": ["rows"],
+                "additionalProperties": False
+            },
             "strict": True
         }
     }
@@ -67,12 +125,9 @@ class MessageManager:
         return self._messages
     
     @staticmethod
-    def persist_state(messages: list[dict], screenshot_base64: str, step_number: int, timestamp: str):        
-        state_dir = f"logs/{timestamp}/"
-        os.makedirs(state_dir, exist_ok=True)
-        
-        state_file_name = f"{state_dir}/step_{step_number:02d}_messages"
-        screenshot_file_name = f"{state_dir}/step_{step_number:02d}_screenshot"
+    def persist_state(messages: list[dict], screenshot_base64: str, step_number: int, save_dir: str):         
+        state_file_name = f"{save_dir}/step_{step_number:02d}_messages"
+        screenshot_file_name = f"{save_dir}/step_{step_number:02d}_screenshot"
 
         with open(f"{state_file_name}.txt", "w") as f:
             formatted_messages = MessageManager.get_pretty_formatted_messages(messages=messages, 

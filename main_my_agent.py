@@ -1,30 +1,19 @@
-import base64
 import logging
 import datetime
-import json
 import os
-from typing import Generic, Optional, Type, TypeVar
-from anthropic import Anthropic
-from langchain_anthropic import ChatAnthropic
-from langchain_openai import ChatOpenAI
-from browser_use import ActionModel, ActionResult, Agent, Browser, BrowserConfig, BrowserContextConfig, Controller
-from browser_use.browser.context import BrowserContext
+from browser_use import Browser, BrowserConfig, BrowserContextConfig
 import asyncio
 from dotenv import load_dotenv
-import openai
-from pydantic import BaseModel, ConfigDict, Field, create_model
-from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, ToolMessage, AIMessage
+from openai import OpenAI
 from my_navigator_agent import MyNavigatorAgent
-from my_planner_agent import MyPlannerAgent
+from my_utils import MyAgentContext
 
-# logging.getLogger('browser_use').setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
 
 def list_available_openai_models():
-    client = openai.OpenAI()
+    client = OpenAI()
     models = client.models.list()
     print("Available models:")
     for model in models.data:
@@ -49,12 +38,21 @@ async def main():
 
     browser = Browser(config=config)
     browser_context = await browser.new_context(config=browser_context_config)
+
+    run_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    save_dir = f"output/{run_id}/"
+    os.makedirs(save_dir, exist_ok=True)
+
+    openai_client = OpenAI()
+
+    ctx = MyAgentContext(browser_context=browser_context, 
+                         openai_client=openai_client, 
+                         save_dir=save_dir,
+                         run_id=run_id)
     
     try:
-        agent = MyNavigatorAgent(browser=browser, 
-                                 browser_context=browser_context)
-        # agent = MyPlannerAgent(browser=browser, 
-        #                        browser_context=browser_context)
+        agent = MyNavigatorAgent(ctx=ctx)
+        # agent = MyPlannerAgent(ctx=ctx)
         await agent.run()
     finally:
         if browser_context:

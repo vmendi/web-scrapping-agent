@@ -29,22 +29,15 @@ class NavigatorAgentOutputModel(BaseModel):
 
 
 class MyNavigatorAgent():
-    def __init__(self, 
-                 browser: Browser, 
-                 browser_context: BrowserContext,
-                 ):
-        self.browser = browser
-        self.browser_context = browser_context
-
-        self.openai_client = OpenAI()
-
-        self.my_agent_tools = MyAgentTools(browser_context=self.browser_context, 
-                                           openai_client=self.openai_client)
+    def __init__(self, ctx: my_utils.MyAgentContext):
+        self.ctx = ctx
+        self.my_agent_tools = MyAgentTools(ctx=self.ctx)
         
         self.output_schema = my_utils.convert_pydantic_model_to_openai_output_schema(NavigatorAgentOutputModel)
         
         self.message_manager = my_utils.MessageManager(system_message_content=self.get_system_message())
         self.message_manager.add_user_message(content=self.get_web_scrapping_task())
+        
 
     @staticmethod
     def get_system_message() -> str:
@@ -92,13 +85,11 @@ The output columns are:
 # """
 
     async def run(self, max_steps: int = 1000):
-        global_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        logger.info(f'Starting navigator agent task at {global_timestamp}')
+        logger.info(f'Starting navigator agent task at {self.ctx.run_id}')
         
         for step_number in range(max_steps):
             is_done, is_success = await self.step(step_number=step_number, 
-                                                  max_steps=max_steps, 
-                                                  timestamp=global_timestamp)
+                                                  max_steps=max_steps)
             if is_done:
                 logger.info(f'Task completed at step {step_number} with success: {is_success}')
                 break
@@ -106,12 +97,12 @@ The output columns are:
             logger.info(f'Task failed after max {max_steps} steps')
 
 
-    async def step(self, step_number: int, max_steps: int, timestamp: str):
+    async def step(self, step_number: int, max_steps: int):
         step_message = f'----------------------------------- Step {step_number} of {max_steps} -----------------------------------'
         border_line = '-' * len(step_message)
         logger.info(f"\n{border_line}\n{step_message}\n{border_line}")
         
-        browser_state = await self.browser_context.get_state()
+        browser_state = await self.ctx.browser_context.get_state()
         messages = self.message_manager.get_messages()
         
         # Add current state as the last message in the list before calling the model. We don't store it in the message manager 
@@ -120,13 +111,13 @@ The output columns are:
         
         my_utils.MessageManager.persist_state(messages=messages, 
                                               screenshot_base64=browser_state.screenshot, 
-                                              step_number=step_number, 
-                                              timestamp=timestamp)
+                                              step_number=step_number,
+                                              save_dir=self.ctx.save_dir)
         
-        await self.browser_context.remove_highlights()
+        await self.ctx.browser_context.remove_highlights()
         
         logger.info(f"Step {step_number}, Sending messages to the model...")
-        response = self.openai_client.responses.create(
+        response = self.ctx.openai_client.responses.create(
             # model="gpt-4.1-nano",
             # model="gpt-4.1-mini",
             # model="gpt-4.1",
@@ -165,7 +156,7 @@ The output columns are:
             
             # Add the tool result message using the correct tool_call_id
             self.message_manager.add_tool_result_message(result_message=action_result.action_result_msg,
-                                                        tool_call_id=function_tool_call.call_id)
+                                                         tool_call_id=function_tool_call.call_id)
 
             is_done = action_result.is_done
             is_success = action_result.success
@@ -195,12 +186,12 @@ The output columns are:
 
         if elements_text != '':
             if has_content_above:
-                elements_text = f'... {browser_state.pixels_above} pixels above - scroll or extract content to see more ...\n{elements_text}'
+                elements_text = f'... {browser_state.pixels_above} pixels above - scroll to see more ...\n{elements_text}'
             else:
                 elements_text = f'[Start of page]\n{elements_text}'
 
             if has_content_below:
-                elements_text = f'{elements_text}\n... {browser_state.pixels_below} pixels below - scroll or extract content to see more ...'
+                elements_text = f'{elements_text}\n... {browser_state.pixels_below} pixels below - scroll to see more ...'
             else:
                 elements_text = f'{elements_text}\n[End of page]'
         else:
@@ -215,7 +206,8 @@ The output columns are:
                            f"The following is one-time information - if you need to remember it write it to memory:\n"
                            f"Current url: {browser_state.url}\n"
                            f"Available tabs:\n{browser_state.tabs}\n"
-                           f"Interactive elements from top layer of the current page inside the viewport:\n{elements_text}"
+                           f"Interactive elements from top layer of the current page inside the viewport:\n{elements_text}\n"
+                           f"[Current state ends here]"
             },
             {
                 'role': 'user',
@@ -230,9 +222,5 @@ The output columns are:
                         "detail": "high"
                     }
                 ]
-            },
-            {
-                'role': 'user',
-                'content': f'[Current state ends here]'
             }
         ]

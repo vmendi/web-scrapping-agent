@@ -1,19 +1,18 @@
 import asyncio
-from dataclasses import dataclass
 import json
 import logging
-from typing import Any, Awaitable, Callable, Dict, Generic, List, Optional, Type, TypeVar
+from typing import Any, Awaitable, Callable, List, Optional
 from functools import cached_property
-from browser_use import Browser
 from pydantic import BaseModel
 
 from openai import OpenAI
 from openai.types.responses import ResponseFunctionToolCall
 from agents.function_schema import function_schema
-from agents import Agent, FunctionTool, RunContextWrapper, function_tool
-from agents.run import Runner
+from agents import RunContextWrapper
 from browser_use.browser.context import BrowserContext
 from my_content_extract_agent import MyContentExtractAgent
+from my_utils import MyAgentContext
+
 
 logger = logging.getLogger(__name__)
 
@@ -26,16 +25,12 @@ class ActionResult(BaseModel):
     # A message to return to the agent in either case of success or failure.
     action_result_msg: str = None           
     
-    is_done: Optional[bool] = False    
-        
-
-@dataclass
-class MyToolContext:
-    browser_context: BrowserContext
-    openai_client: OpenAI
+    # Signals that it was the last step for the agent.
+    is_done: Optional[bool] = False
 
 
-async def done(ctx: RunContextWrapper[MyToolContext], success: bool, message_to_user: str) -> ActionResult:
+
+async def done(ctx: RunContextWrapper[MyAgentContext], success: bool, message_to_user: str) -> ActionResult:
     """The agent has finished the task with success or failure, for whatever the reason.
     
     Args:
@@ -50,7 +45,7 @@ async def done(ctx: RunContextWrapper[MyToolContext], success: bool, message_to_
                         is_done=True)
 
 
-async def search_google(ctx: RunContextWrapper[MyToolContext], query: str) -> ActionResult:
+async def search_google(ctx: RunContextWrapper[MyAgentContext], query: str) -> ActionResult:
     """Search the query in Google in the current tab.
     
     Args:
@@ -66,7 +61,7 @@ async def search_google(ctx: RunContextWrapper[MyToolContext], query: str) -> Ac
                         success=True)
 
 
-async def go_back(ctx: RunContextWrapper[MyToolContext]) -> ActionResult:
+async def go_back(ctx: RunContextWrapper[MyAgentContext]) -> ActionResult:
     """Navigate back to the previous page in the browser history of the current tab.
             
     Returns:
@@ -77,7 +72,7 @@ async def go_back(ctx: RunContextWrapper[MyToolContext]) -> ActionResult:
                         success=True)
 
 
-async def go_to_url(ctx: RunContextWrapper[MyToolContext], url: str) -> ActionResult:
+async def go_to_url(ctx: RunContextWrapper[MyAgentContext], url: str) -> ActionResult:
     """Navigate to a specific URL in the current tab.
     
     Args:
@@ -93,7 +88,7 @@ async def go_to_url(ctx: RunContextWrapper[MyToolContext], url: str) -> ActionRe
                         success=True)
 
 
-async def input_text(ctx: RunContextWrapper[MyToolContext], index: int, text: str) -> ActionResult:
+async def input_text(ctx: RunContextWrapper[MyAgentContext], index: int, text: str) -> ActionResult:
     """Input text into an interactive element identified by its index.
     
     Args:
@@ -113,7 +108,7 @@ async def input_text(ctx: RunContextWrapper[MyToolContext], index: int, text: st
                         success=True)
 
 
-async def click_element(ctx: RunContextWrapper[MyToolContext], index: int) -> ActionResult:
+async def click_element(ctx: RunContextWrapper[MyAgentContext], index: int) -> ActionResult:
     """Click on an element identified by its index in the current page.
     
     Args:
@@ -156,7 +151,7 @@ async def click_element(ctx: RunContextWrapper[MyToolContext], index: int) -> Ac
                             success=False)
 
 
-async def open_tab(ctx: RunContextWrapper[MyToolContext], url: str) -> ActionResult:
+async def open_tab(ctx: RunContextWrapper[MyAgentContext], url: str) -> ActionResult:
     """Open a new tab with the specified URL.
     
     Args:
@@ -171,7 +166,7 @@ async def open_tab(ctx: RunContextWrapper[MyToolContext], url: str) -> ActionRes
                         success=True)
 
 
-async def switch_tab(ctx: RunContextWrapper[MyToolContext], page_id: int) -> ActionResult:
+async def switch_tab(ctx: RunContextWrapper[MyAgentContext], page_id: int) -> ActionResult:
     """Switch to a specific tab by its ID.
     
     Args:
@@ -189,7 +184,7 @@ async def switch_tab(ctx: RunContextWrapper[MyToolContext], page_id: int) -> Act
                         success=True)
 
 
-async def extract_content(ctx: RunContextWrapper[MyToolContext], extraction_goal: str, row_schema: str) -> ActionResult:
+async def extract_content(ctx: RunContextWrapper[MyAgentContext], extraction_goal: str, row_schema: str) -> ActionResult:
     """Extracts content from the current page based on specific extraction goal and row schema.
 
     Args:    
@@ -204,8 +199,7 @@ async def extract_content(ctx: RunContextWrapper[MyToolContext], extraction_goal
     """
     try:
         agent = MyContentExtractAgent(
-            browser_context=ctx.browser_context,
-            openai_client=ctx.openai_client,
+            ctx=ctx,
             extraction_goal=extraction_goal,
             row_schema=row_schema,            
         )
@@ -219,7 +213,7 @@ async def extract_content(ctx: RunContextWrapper[MyToolContext], extraction_goal
         return ActionResult(action_result_msg=f"Extraction failed: {e}",  success=False)
 
 
-async def scroll_down(ctx: RunContextWrapper[MyToolContext], amount: int) -> ActionResult:
+async def scroll_down(ctx: RunContextWrapper[MyAgentContext], amount: int) -> ActionResult:
     """Scroll down the page by a specified amount of pixels.
     
     Args:
@@ -239,7 +233,7 @@ async def scroll_down(ctx: RunContextWrapper[MyToolContext], amount: int) -> Act
                         success=True)
 
 
-async def scroll_up(ctx: RunContextWrapper[MyToolContext], amount: int) -> ActionResult:
+async def scroll_up(ctx: RunContextWrapper[MyAgentContext], amount: int) -> ActionResult:
     """Scroll up the page by a specified amount of pixels.
     
     Args:
@@ -259,7 +253,7 @@ async def scroll_up(ctx: RunContextWrapper[MyToolContext], amount: int) -> Actio
                         success=True)
 
 
-async def send_keys(ctx: RunContextWrapper[MyToolContext], keys: str) -> ActionResult:
+async def send_keys(ctx: RunContextWrapper[MyAgentContext], keys: str) -> ActionResult:
     """Send strings of special keys like Escape, Backspace, Insert, PageDown, Delete, Enter, or shortcuts like 'Control+o', 'Control+Shift+T'.
     
     Args:
@@ -286,7 +280,7 @@ async def send_keys(ctx: RunContextWrapper[MyToolContext], keys: str) -> ActionR
                         success=True)
 
 
-async def scroll_to_text(ctx: RunContextWrapper[MyToolContext], text: str) -> ActionResult:
+async def scroll_to_text(ctx: RunContextWrapper[MyAgentContext], text: str) -> ActionResult:
     """Scroll to a specific text on the page.
     
     Args:
@@ -324,7 +318,7 @@ async def scroll_to_text(ctx: RunContextWrapper[MyToolContext], text: str) -> Ac
                             success=False)
 
 
-async def get_dropdown_options(ctx: RunContextWrapper[MyToolContext], index: int) -> ActionResult:
+async def get_dropdown_options(ctx: RunContextWrapper[MyAgentContext], index: int) -> ActionResult:
     """Get all options from a native dropdown.
     
     Args:
@@ -397,7 +391,7 @@ async def get_dropdown_options(ctx: RunContextWrapper[MyToolContext], index: int
                             success=False)
 
 
-async def select_dropdown_option(ctx: RunContextWrapper[MyToolContext], index: int, text: str) -> ActionResult:
+async def select_dropdown_option(ctx: RunContextWrapper[MyAgentContext], index: int, text: str) -> ActionResult:
     """Select the option 'text' in the dropdown interactive element identified as 'index'.
     
     Args:
@@ -491,8 +485,10 @@ async def select_dropdown_option(ctx: RunContextWrapper[MyToolContext], index: i
 
 
 class MyAgentTools():
-    def __init__(self, browser_context: BrowserContext, openai_client: OpenAI):
-        self.tools: List[Callable[[RunContextWrapper[MyToolContext], Any], Awaitable[ActionResult]]] = [
+    def __init__(self, ctx: MyAgentContext):
+        self.ctx = ctx
+
+        self.tools: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]] = [
             done,
             search_google,
             go_back,
@@ -509,8 +505,8 @@ class MyAgentTools():
             get_dropdown_options,
             select_dropdown_option,
         ]
-        self.ctx = MyToolContext(browser_context=browser_context, openai_client=openai_client)
-                            
+        
+    
     def get_tools(self):
         return self.tools
     

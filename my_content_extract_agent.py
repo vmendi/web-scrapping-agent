@@ -28,64 +28,26 @@ class MyContentExtractAgent:
     openai_client: OpenAI
         An `openai.OpenAI` client.
     extraction_goal: str
-        A natural‑language description of what information should be extracted.
+        A natural language description of what information should be extracted.
     row_schema: str
         A JSON schema describing the *shape of a single row* of the table that should be
         extracted. The agent will produce a JSON array where each element satisfies this
         schema.
     """
-    def __init__(self,
-                 browser_context: BrowserContext,
-                 openai_client: OpenAI,
-                 extraction_goal: str,
-                 row_schema: str):
-        self.browser_context = browser_context
+    def __init__(self, ctx: my_utils.MyAgentContext, extraction_goal: str, row_schema: str):
+        self.ctx = ctx
         self.extraction_goal = extraction_goal
-        self.row_schema = row_schema
-        self.openai_client = openai_client
-
-        # Build the output schema for the OpenAI Responses API.  We want an *array* of
-        # items that follow the provided row schema.
-        row_schema_dict = json.loads(self.row_schema)
-        
-        # Convert the simplified schema to proper JSON schema format
-        properties = {}
-        for key, type_str in row_schema_dict.items():
-            properties[key] = {"type": type_str}
-            
-        self.output_schema = {
-            "format": {
-                "type": "json_schema",
-                "name": "ExtractedRows",
-                "schema": {
-                    "type": "object",
-                    "properties": {
-                        "rows": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": properties,
-                                "required": list(properties.keys()),
-                                "additionalProperties": False
-                            }
-                        }
-                    },
-                    "required": ["rows"],
-                    "additionalProperties": False
-                },
-                "strict": True
-            }
-        }
+        self.output_schema = my_utils.convert_simplified_schema_to_openai_output_schema(row_schema)
 
         # Messages
         self.message_manager = my_utils.MessageManager(system_message_content=self._read_system_prompt())
 
-        # first user prompt (named `extraction_goal` in spec)
+        # First user prompt (named `extraction_goal` in spec)
         self.message_manager.add_user_message(
             content=("You are tasked with extracting structured data from a webpage.\n"
                      f"Extraction goal: {self.extraction_goal}\n\n"
                      "The caller provided the JSON schema of a *single row* that must be adhered to:\n"
-                     f"```json\n{json.dumps(self.row_schema, indent=2)}\n```\n"
+                     f"```json\n{json.dumps(row_schema, indent=2)}\n```\n"
                      "Produce a JSON array where each element respects that schema. Only output JSON. No additional text.")
         )
 
@@ -103,7 +65,7 @@ class MyContentExtractAgent:
         csv_path: str
             The absolute path of the CSV file where the rows were persisted.
         """
-        page = await self.browser_context.get_current_page()
+        page = await self.ctx.browser_context.get_current_page()
         await page.wait_for_load_state()
 
         # 2. Get page content (HTML → Markdown to make it easier for the LLM)
@@ -120,7 +82,7 @@ class MyContentExtractAgent:
         messages = self.message_manager.get_messages()
         
         logger.info("Sending extraction prompt to OpenAI – input token count ≄ %s", len(str(messages)))
-        response = self.openai_client.responses.create(
+        response = self.ctx.openai_client.responses.create(
             model="o4-mini",
             input=messages,
             text=self.output_schema,
@@ -144,7 +106,7 @@ class MyContentExtractAgent:
 
         # 5. Persist to CSV
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        csv_filename = f"extracted_{timestamp}.csv"
+        csv_filename = f"{self.ctx.save_dir}/extracted_{timestamp}.csv"        
         csv_path = os.path.abspath(csv_filename)
         try:
             if rows:
