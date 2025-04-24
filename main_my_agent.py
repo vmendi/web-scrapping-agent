@@ -6,6 +6,7 @@ import asyncio
 from dotenv import load_dotenv
 from openai import OpenAI
 from my_navigator_agent import MyNavigatorAgent
+from my_planner_agent import MyPlannerAgent
 from my_utils import MyAgentContext
 
 logger = logging.getLogger(__name__)

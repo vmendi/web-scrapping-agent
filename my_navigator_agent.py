@@ -41,48 +41,14 @@ class MyNavigatorAgent():
 
     @staticmethod
     def get_system_message() -> str:
-        with open("my_navigator_agent_system_prompt_00.md", "r") as f:
+        with open("my_navigator_system_prompt_00.md", "r") as f:
             system_prompt = f.read()
             return system_prompt
         
     @staticmethod
     def get_web_scrapping_task() -> str:
-        return """Get a list of all of the Harvard University's schools.
-The output columns are:
-    School Name,
-    School Website URL.
-"""
-#         return """
-# "plan": [
-#     {
-#       "step_id": 1,
-#       "goal": "Perform web searches to find the single most authoritative webpage listing Harvard University's primary academic schools.",
-#       "input_hints": [
-#         "search: Harvard University primary academic schools",
-#         "search: Harvard University list of schools",
-#         "search: Harvard University degree programs",
-#         "look for: navigation links like 'Academics', 'Schools', 'Admissions' on potential university homepages"
-#       ],
-#       "output_criteria": "Output the single URL identified as the most likely official directory or listing page for Harvard University's primary schools."
-#     },
-#     {
-#       "step_id": 2,
-#       "goal": "Navigate to the URL identified in Step 1 and locate the main section or list containing representations of the primary academic schools.",
-#       "input_hints": [
-#         "look for: main content sections with headings like 'Schools', 'Our Schools', 'Academic Divisions', 'Degree Programs'",
-#         "identify: patterns of repeating elements where each seems to represent a school (e.g., name with a link)",
-#         "apply constraint: focus on lists clearly representing major degree-granting academic divisions, differentiating from lists of departments, centers, or institutes"
-#       ],
-#       "output_criteria": "Report the final URL and provide a clear description or context for the primary page region (e.g., container element, section) holding the school list"
-#     },
-#     {
-#       "step_id": 3,
-#       "goal": "Persist the list of schools by using extract_content tool",
-#       "input_hints": [],
-#       "output_criteria": ""
-#     }
-#   ]
-# """
+        with open("my_navigator_user_prompt_00.md", "r") as f:
+            return f.read()
 
     async def run(self, max_steps: int = 1000):
         logger.info(f'Starting navigator agent task at {self.ctx.run_id}')
@@ -98,9 +64,7 @@ The output columns are:
 
 
     async def step(self, step_number: int, max_steps: int):
-        step_message = f'----------------------------------- Step {step_number} of {max_steps} -----------------------------------'
-        border_line = '-' * len(step_message)
-        logger.info(f"\n{border_line}\n{step_message}\n{border_line}")
+        my_utils.log_step_info(logger, step_number, max_steps)
         
         browser_state = await self.ctx.browser_context.get_state()
         messages = self.message_manager.get_messages()
@@ -121,9 +85,9 @@ The output columns are:
             # model="gpt-4.1-nano",
             # model="gpt-4.1-mini",
             # model="gpt-4.1",
-            # model="o3",
-            model="o4-mini",
-            # reasoning={"effort": "high"},
+            model="o3",
+            # model="o4-mini",
+            reasoning={"effort": "high"},
             input=messages,
             text=self.output_schema,
             tools=self.my_agent_tools.tools_schema,

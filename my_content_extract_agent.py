@@ -52,7 +52,7 @@ class MyContentExtractAgent:
         )
 
     def _read_system_prompt(self) -> str:
-        with open( "my_content_extract_agent_system_prompt_00.md", "r", encoding="utf-8") as fh:
+        with open( "my_content_extract_system_prompt_00.md", "r", encoding="utf-8") as fh:
             return fh.read()
         
     async def run(self, max_steps: int = 1000) -> tuple[list[dict], str]:

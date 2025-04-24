@@ -12,7 +12,6 @@ import asyncio
 from openai import OpenAI
 from openai.types.responses import ResponseFunctionToolCall
 from pydantic import BaseModel, ConfigDict, Field, create_model
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, ToolMessage, AIMessage
 
 import my_utils
 logger = logging.getLogger(__name__)
@@ -40,60 +39,72 @@ class PlannerAgentOutputModel(BaseModel):
 
 
 class MyPlannerAgent():
-    def __init__(self, 
-                 browser: Browser, 
-                 browser_context: BrowserContext,
-                 ):
-        self.browser = browser
-        self.browser_context = browser_context
-        self.system_prompt_file = "my_planner_system_prompt.md"
-        self.user_prompt_file = "my_planner_user_prompt.md"
+    def __init__(self, ctx: my_utils.MyAgentContext):
+        self.ctx = ctx
+        self.system_prompt_file = "my_planner_system_prompt_00.md"
+        self.user_prompt_file = "my_planner_user_prompt_01.md"
 
-        self.openai_client = OpenAI()       
         self.output_schema = my_utils.convert_pydantic_model_to_openai_output_schema(PlannerAgentOutputModel)
         
-        self.system_message = self.get_system_prompt()
-        self.message_manager = my_utils.MessageManager(system_message=self.system_message)
-        self.message_manager.add_human_message(message=self.get_user_prompt())
+        self.message_manager = my_utils.MessageManager(system_message_content=self.get_system_prompt())
+        self.message_manager.add_user_message(content=self.get_user_prompt())
     
-    def get_user_prompt(self) -> HumanMessage:
+    def get_user_prompt(self) -> str:
         with open(self.user_prompt_file, "r", encoding="utf-8") as f:
-            user_prompt = f.read()
-            return HumanMessage(content=user_prompt)
-
-    def get_system_prompt(self) -> SystemMessage:
+            return f.read()
+            
+    def get_system_prompt(self) -> str:
         with open(self.system_prompt_file, "r", encoding="utf-8") as f:
-            system_prompt = f.read()
-            return SystemMessage(content=system_prompt)
+            return f.read()
+
 
     async def run(self, max_steps: int = 1000):
-        logger.info(f'Starting planning task...')
+        logger.info(f'Starting planning task at {self.ctx.run_id}')
         
         for step_number in range(max_steps):
-            done = await self.step(step_number=step_number, max_steps=max_steps)
-            if done:
+            is_done, is_success = await self.step(step_number=step_number, max_steps=max_steps)
+            if is_done:
+                logger.info(f'Task completed at step {step_number} with success: {is_success}')
                 break
-        
-        logger.info(f'Task completed')
+        else:
+            logger.info(f'Task failed after max {max_steps} steps')
     
+
     async def step(self, step_number: int, max_steps: int):
-        logger.info(f'Step {step_number} of {max_steps}')
+        my_utils.log_step_info(logger, step_number, max_steps)
         
-        messages = self.message_manager.get_all_messages_openai_format()
-        logger.info(f'Messages: {json.dumps(messages, indent=2)}')
+        messages = self.message_manager.get_messages()        
+        messages.append({
+            "role": "user",
+            "content": f"Current step: {step_number}\n"
+                       f"Current date and time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        })
         
-        response = self.openai_client.responses.create(
-            # model="gpt-4.1-nano",
-            # model="gpt-4.1-mini",
-            model="gpt-4.1",
+        logger.info(f"Step {step_number}, Sending messages to the model...")
+        response = self.ctx.openai_client.responses.create(
+            model="o4-mini",
+            reasoning={"effort": "medium"},
             input=messages,
             text=self.output_schema,
-            tool_choice="auto",         # auto, none, or just one particular tool
+            tool_choice="auto",
             parallel_tool_calls=False,
             store=False
         )
-                
-        response_json = json.loads(response.output_text)
-        logger.info(f'Response: {json.dumps(response_json, indent=2)}')
+        
+        is_done = True
+        is_success = False
 
-        return True
+        if response.output_text:
+            planner_agent_output = json.loads(response.output_text)
+            self.message_manager.add_ai_message(content=json.dumps(planner_agent_output, indent=2))
+            logger.info(f"Step {step_number}, Response Message:\n{json.dumps(planner_agent_output, indent=2)}")
+
+            if planner_agent_output.get('plan') and planner_agent_output.get('output_schema'):
+                with open(f"my_navigator_agent_user_prompt_00.json", 'w') as f:
+                    json.dump(planner_agent_output, f, indent=2)
+                
+                is_success = True
+        else:
+            logger.info(f"Step {step_number}, Empty Response Message.")
+
+        return is_done, is_success
