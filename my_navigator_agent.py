@@ -130,9 +130,9 @@ The output columns are:
             # model="gpt-4.1-nano",
             # model="gpt-4.1-mini",
             # model="gpt-4.1",
-            model="o3",
-            # model="o4-mini",
-            reasoning={"effort": "high"},
+            # model="o3",
+            model="o4-mini",
+            # reasoning={"effort": "high"},
             input=messages,
             text=self.output_schema,
             tools=self.my_agent_tools.tools_schema,
@@ -140,7 +140,6 @@ The output columns are:
             parallel_tool_calls=False,
             store=False
         )
-        logger.info(f"Step {step_number}, Received response from the model.")
         
         is_done = False
         is_success = True
@@ -151,18 +150,18 @@ The output columns are:
             self.message_manager.add_ai_message(content=json.dumps(navigator_agent_output, indent=2))
             logger.info(f"Step {step_number}, Response Message:\n{json.dumps(navigator_agent_output, indent=2)}")
         else:
-            logger.info(f"Step {step_number}, Response Message is empty: The LLM didn't return any output_text. But it may have returned a function tool call.")
-
+            logger.info(f"Step {step_number}, Empty Response Message.")
+        
         # Get the function tool call from the array of output messages
         function_tool_call: ResponseFunctionToolCall = next((item for item in response.output if isinstance(item, ResponseFunctionToolCall)), None)
 
         if function_tool_call:
             self.message_manager.add_ai_function_tool_call_message(function_tool_call=function_tool_call)
-            logger.info(f"Step {step_number}, Action:\n{function_tool_call.to_json()}")
-
+            logger.info(f"Step {step_number}, Function Tool Call:\n{function_tool_call.to_json()}")
+            
             # Execute the tool
             action_result = await self.my_agent_tools.execute_tool(function_tool_call=function_tool_call)
-            logger.info(f'Step {step_number}, Action Result: {action_result.action_result_msg}')
+            logger.info(f'Step {step_number}, Function Tool Call Result: {action_result.action_result_msg}')
             
             # Add the tool result message using the correct tool_call_id
             self.message_manager.add_tool_result_message(result_message=action_result.action_result_msg,

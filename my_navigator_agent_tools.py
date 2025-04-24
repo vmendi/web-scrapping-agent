@@ -13,6 +13,7 @@ from agents.function_schema import function_schema
 from agents import Agent, FunctionTool, RunContextWrapper, function_tool
 from agents.run import Runner
 from browser_use.browser.context import BrowserContext
+from my_content_extract_agent import MyContentExtractAgent
 
 logger = logging.getLogger(__name__)
 
@@ -26,13 +27,12 @@ class ActionResult(BaseModel):
     action_result_msg: str = None           
     
     is_done: Optional[bool] = False    
-    extracted_content: Optional[str] = None
-    
+        
 
 @dataclass
 class MyToolContext:
     browser_context: BrowserContext
-    openai_client: OpenAI       # We need this because of "extract_content". But, wouldn't it be better if we had "Agents as tools" instead?
+    openai_client: OpenAI
 
 
 async def done(ctx: RunContextWrapper[MyToolContext], success: bool, message_to_user: str) -> ActionResult:
@@ -66,21 +66,6 @@ async def search_google(ctx: RunContextWrapper[MyToolContext], query: str) -> Ac
                         success=True)
 
 
-async def wait(ctx: RunContextWrapper[MyToolContext], seconds: int) -> ActionResult:
-    """Wait for a specified number of seconds.
-    
-    Args:
-        seconds: int - The number of seconds to wait.
-        
-    Returns:
-        ActionResult - The result of the action with the wait confirmation message
-    """
-    logger.info(f'Waiting for {seconds} seconds...')
-    await asyncio.sleep(seconds)
-    return ActionResult(action_result_msg=f'Waited for {seconds} seconds',
-                        success=True)
-
-
 async def go_back(ctx: RunContextWrapper[MyToolContext]) -> ActionResult:
     """Navigate back to the previous page in the browser history of the current tab.
             
@@ -97,7 +82,7 @@ async def go_to_url(ctx: RunContextWrapper[MyToolContext], url: str) -> ActionRe
     
     Args:
         url: str - The URL to navigate to.
-                
+
     Returns:
         ActionResult - The result of the action with the navigation confirmation message
     """
@@ -204,32 +189,34 @@ async def switch_tab(ctx: RunContextWrapper[MyToolContext], page_id: int) -> Act
                         success=True)
 
 
-async def extract_content(ctx: RunContextWrapper[MyToolContext], goal: str) -> ActionResult:
-    """Extract content from the current page based on a specific goal.
-    
-    Args:
-        goal: str - The goal or purpose of the content extraction.
-        
-    Returns:
-        ActionResult - The result of the action with the extracted content
+async def extract_content(ctx: RunContextWrapper[MyToolContext], extraction_goal: str, row_schema: str) -> ActionResult:
+    """Extracts content from the current page based on specific extraction goal and row schema.
+
+    Args:    
+        extraction_goal: str - A natural language description of what information should be extracted.
+        row_schema: str - A JSON schema describing the *shape of a single row* of the table that should be extracted. Use `snake_case` keys. Example:
+            ```json
+            {
+                "some_name": "string",
+                "the_age": "integer"
+            }
+            ```
     """
-    page = await ctx.browser_context.get_current_page()
-    import markdownify
-    content = markdownify.markdownify(await page.content())
-    prompt = ('Your task is to extract the content of the page. '
-              'You will be given a page and a goal and you should extract all relevant information around this goal from the page. '
-              'If the goal is vague, summarize the page. '
-              'Respond in json format. '
-              'Extraction goal: {goal}, Page: {page}')
-    
     try:
-        return ActionResult(action_result_msg=f"Content extracted from page",
-                            extracted_content="TODO",
-                            success=True)
+        agent = MyContentExtractAgent(
+            browser_context=ctx.browser_context,
+            openai_client=ctx.openai_client,
+            extraction_goal=extraction_goal,
+            row_schema=row_schema,            
+        )
+
+        rows, csv_path = await agent.run()
+
+        return ActionResult(action_result_msg=f"Successfully extracted {len(rows)} rows. Saved to {csv_path}", success=True)
+    
     except Exception as e:
-        return ActionResult(action_result_msg=f"Error extracting from page, Exception:\n{str(e)}",
-                            extracted_content=None,
-                            success=False)
+        logger.error("Content extraction agent failed: %s", e)
+        return ActionResult(action_result_msg=f"Extraction failed: {e}",  success=False)
 
 
 async def scroll_down(ctx: RunContextWrapper[MyToolContext], amount: int) -> ActionResult:
@@ -508,7 +495,6 @@ class MyAgentTools():
         self.tools: List[Callable[[RunContextWrapper[MyToolContext], Any], Awaitable[ActionResult]]] = [
             done,
             search_google,
-            wait,   
             go_back,
             go_to_url,
             input_text,
