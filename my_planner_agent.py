@@ -82,8 +82,10 @@ class MyPlannerAgent():
         
         logger.info(f"Step {step_number}, Sending messages to the model...")
         response = self.ctx.openai_client.responses.create(
-            model="o4-mini",
-            reasoning={"effort": "medium"},
+            # model="o4-mini",
+            model="o3",
+            # reasoning={"effort": "medium"},
+            reasoning={"effort": "high"},
             input=messages,
             text=self.output_schema,
             tool_choice="auto",

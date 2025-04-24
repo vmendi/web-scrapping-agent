@@ -52,8 +52,8 @@ async def main():
                          run_id=run_id)
     
     try:
-        agent = MyNavigatorAgent(ctx=ctx)
-        # agent = MyPlannerAgent(ctx=ctx)
+        # agent = MyNavigatorAgent(ctx=ctx)
+        agent = MyPlannerAgent(ctx=ctx)
         await agent.run()
     finally:
         if browser_context:

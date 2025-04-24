@@ -1,0 +1,67 @@
+{
+  "output_schema": [
+    {
+      "name": "course_title",
+      "type": "string",
+      "description": "The full official name of the course"
+    },
+    {
+      "name": "course_code",
+      "type": "string",
+      "description": "The catalog identifier for the course (e.g., \u201cCOMPSCI 50\u201d)"
+    },
+    {
+      "name": "offering_department",
+      "type": "string",
+      "description": "The academic department, division, or school offering the course"
+    },
+    {
+      "name": "course_description",
+      "type": "string",
+      "description": "A short summary or abstract describing the course content"
+    },
+    {
+      "name": "academic_year",
+      "type": "string",
+      "description": "The academic year under which the course is listed (should be \u201c2024-2025\u201d)"
+    }
+  ],
+  "plan": [
+    {
+      "step_id": 1,
+      "agent": "WNA",
+      "goal": "Discover the authoritative, university-hosted website or online system that publishes the complete Harvard University course catalog (or searchable course database) and explicitly supports the 2024-2025 academic year.",
+      "input_hints": [
+        "web search: \"Harvard University course catalog 2024-2025\"",
+        "web search: \"Harvard course search 2024-25\"",
+        "web search: \"Harvard FAS courses of instruction 2024-2025\"",
+        "look for Harvard-owned domains such as *.harvard.edu or *.fas.harvard.edu",
+        "keywords to notice on result snippets/pages: \"Course Search\", \"Courses of Instruction\", \"Catalog\", \"2024-2025\", \"my.harvard\""
+      ],
+      "output_criteria": "Return a concise ranked list (no more than five) of candidate URLs that appear to be official Harvard University resources (same-domain pages or subdomains) providing a central catalog or database of courses and which mention, in title, URL, or page content, the 2024-2025 academic year."
+    },
+    {
+      "step_id": 2,
+      "agent": "WNA",
+      "goal": "Evaluate the candidate URLs from Step 1 to locate the single page or interface that actually allows browsing or querying courses specifically for the 2024-2025 academic year and is publicly accessible (no authentication).",
+      "input_hints": [
+        "Open each candidate URL to verify Harvard branding, domain authenticity, and page accessibility",
+        "Within each site, look for UI elements or URL parameters labelled \"Academic Year\", \"Year\", \"Session\", or explicitly listing \"2024-2025\" or \"2024-25\"",
+        "If a drop-down or toggle exists, attempt to select or otherwise activate the 2024-2025 year filter",
+        "Prefer a view that lists all courses (or can return an unfiltered list) rather than requiring granular search terms"
+      ],
+      "output_criteria": "Output the single URL judged most authoritative and user-accessible that presents (or can present after setting the year filter) the full list of Harvard courses for the 2024-2025 academic year, along with a brief note describing the control or parameter used to ensure the 2024-2025 filter is active."
+    },
+    {
+      "step_id": 3,
+      "agent": "WNA",
+      "goal": "Navigate within the chosen site (from Step 2) to the concrete page view that displays the individual course entries for the 2024-2025 academic year, confirming that each listed entry includes title, code, department, and description fields.",
+      "input_hints": [
+        "If the interface is a search form, run a blank or broad query (e.g., no keyword, \u2018All Departments\u2019) while the 2024-2025 year filter is active to return the complete list",
+        "Scroll or paginate if necessary to ensure the page visibly contains at least several course records",
+        "Look for repeating blocks or rows where course-specific data appear (title, catalog number, department, description)"
+      ],
+      "output_criteria": "Provide the final, fully-qualified URL (including any query parameters reflecting the 2024-2025 filter) and a clear textual description of the on-page region or results container that holds the repeating course listings. This marks the location for the subsequent extraction step."
+    }
+  ]
+}
