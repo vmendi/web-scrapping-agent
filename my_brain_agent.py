@@ -38,11 +38,11 @@ class PlannerAgentOutputModel(BaseModel):
     )
 
 
-class MyPlannerAgent():
+class MyBrainAgent():
     def __init__(self, ctx: my_utils.MyAgentContext):
         self.ctx = ctx
-        self.system_prompt_file = "my_planner_system_prompt_00.md"
-        self.user_prompt_file = "my_planner_user_prompt_01.md"
+        self.system_prompt_file = "my_brain_system_prompt_00.md"
+        self.user_prompt_file = "my_brain_user_prompt_01.md"
 
         self.output_schema = my_utils.convert_pydantic_model_to_openai_output_schema(PlannerAgentOutputModel)
         

@@ -6,7 +6,7 @@ import asyncio
 from dotenv import load_dotenv
 from openai import OpenAI
 from my_navigator_agent import MyNavigatorAgent
-from my_planner_agent import MyPlannerAgent
+from my_brain_agent import MyBrainAgent
 from my_utils import MyAgentContext
 
 logger = logging.getLogger(__name__)
@@ -53,7 +53,7 @@ async def main():
     
     try:
         # agent = MyNavigatorAgent(ctx=ctx)
-        agent = MyPlannerAgent(ctx=ctx)
+        agent = MyBrainAgent(ctx=ctx)
         await agent.run()
     finally:
         if browser_context:
