@@ -484,7 +484,7 @@ async def select_dropdown_option(ctx: RunContextWrapper[MyAgentContext], index: 
                             success=False)
 
 
-class MyAgentTools():
+class MyNavigatorAgentTools():
     def __init__(self, ctx: MyAgentContext):
         self.ctx = ctx
 
@@ -510,6 +510,7 @@ class MyAgentTools():
     def get_tools(self):
         return self.tools
     
+
     @cached_property
     def tools_schema(self) -> list[dict]:		
         tools_schema = []

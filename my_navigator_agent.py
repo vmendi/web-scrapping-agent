@@ -1,19 +1,10 @@
-import base64
 import datetime
 import json
-import os
 import logging
-from typing import Generic, Optional, Type, TypeVar
-from browser_use import ActionResult, Browser, BrowserConfig, BrowserContextConfig
-from browser_use.browser.context import BrowserContext
 from browser_use.browser.views import BrowserState
-import asyncio
-from openai import OpenAI
-from openai.types.responses import ResponseFunctionToolCall, ResponseOutputMessage
-from pydantic import BaseModel, ConfigDict, Field, create_model
-import pprint
-
-from my_navigator_agent_tools import MyAgentTools
+from openai.types.responses import ResponseFunctionToolCall
+from pydantic import BaseModel, ConfigDict
+from my_agent_tools import MyNavigatorAgentTools
 import my_utils
 
 
@@ -31,7 +22,7 @@ class NavigatorAgentOutputModel(BaseModel):
 class MyNavigatorAgent():
     def __init__(self, ctx: my_utils.MyAgentContext):
         self.ctx = ctx
-        self.my_agent_tools = MyAgentTools(ctx=self.ctx)
+        self.my_agent_tools = MyNavigatorAgentTools(ctx=self.ctx)
         
         self.output_schema = my_utils.convert_pydantic_model_to_openai_output_schema(NavigatorAgentOutputModel)
         
