@@ -3,9 +3,10 @@ import datetime
 import json
 import os
 import logging
+from pathlib import Path
 from typing import Generic, Optional, Type, TypeVar
 from agents import AgentOutputSchema
-from browser_use import ActionResult, Browser, BrowserConfig, BrowserContextConfig
+from browser_use import Browser, BrowserConfig, BrowserContextConfig
 from browser_use.browser.context import BrowserContext
 from browser_use.browser.views import BrowserState
 import asyncio
@@ -14,99 +15,110 @@ from openai.types.responses import ResponseFunctionToolCall
 from pydantic import BaseModel, ConfigDict, Field, create_model
 
 import my_utils
+from my_agent_tools import MyBrainAgentTools, ActionResult
+
 logger = logging.getLogger(__name__)
 
 
-class PlannerAgentOutputModel(BaseModel):
-    class OutputField(BaseModel):
-        name: str = Field(description="The snake_case name of the output field")
-        type: str = Field(description="The data type of the output field (e.g., 'string', 'integer', 'boolean', 'array', 'object')")
-        description: str = Field(description="A brief description of what this field represents")
+# class PlannerAgentOutputModel(BaseModel):
+#     class OutputField(BaseModel):
+#         name: str = Field(description="The snake_case name of the output field")
+#         type: str = Field(description="The data type of the output field (e.g., 'string', 'integer', 'boolean', 'array', 'object')")
+#         description: str = Field(description="A brief description of what this field represents")
 
-    class PlanStep(BaseModel):
-        step_id: int = Field(description="Sequential identifier for the step")
-        agent: str = Field(description="Must always be 'WNA'")
-        goal: str = Field(description="The objective for the WNA in this step")
-        input_hints: list[str] = Field(description="High-level guidance/keywords for WNA")
-        output_criteria: str = Field(description="Description of the successful outcome for this WNA step")
+#     class PlanStep(BaseModel):
+#         step_id: int = Field(description="Sequential identifier for the step")
+#         agent: str = Field(description="Must always be 'WNA'")
+#         goal: str = Field(description="The objective for the WNA in this step")
+#         input_hints: list[str] = Field(description="High-level guidance/keywords for WNA")
+#         output_criteria: str = Field(description="Description of the successful outcome for this WNA step")
 
-    output_schema: list[OutputField] = Field(
-        description="A list defining the fields for the final output object. Each field should have a name (snake_case), type, and description."
-    )
-    plan: list[PlanStep] = Field(
-        description="A sequential list of steps only for the WNA"
-    )
+#     output_schema: list[OutputField] = Field(
+#         description="A list defining the fields for the final output object. Each field should have a name (snake_case), type, and description."
+#     )
+#     plan: list[PlanStep] = Field(
+#         description="A sequential list of steps only for the WNA"
+#     )
 
 
 class MyBrainAgent():
     def __init__(self, ctx: my_utils.MyAgentContext):
+        self.max_steps = 1000
         self.ctx = ctx
-        self.system_prompt_file = "my_brain_system_prompt_00.md"
-        self.user_prompt_file = "my_brain_user_prompt_01.md"
-
-        self.output_schema = my_utils.convert_pydantic_model_to_openai_output_schema(PlannerAgentOutputModel)
+        # self.output_schema = my_utils.convert_pydantic_model_to_openai_output_schema(PlannerAgentOutputModel)
         
+        self.my_agent_tools = MyBrainAgentTools(ctx=self.ctx)
+
         self.message_manager = my_utils.MessageManager(system_message_content=self.get_system_prompt())
         self.message_manager.add_user_message(content=self.get_user_prompt())
     
     def get_user_prompt(self) -> str:
-        with open(self.user_prompt_file, "r", encoding="utf-8") as f:
-            return f.read()
+        return Path("my_brain_user_prompt_01.md").read_text()
             
     def get_system_prompt(self) -> str:
-        with open(self.system_prompt_file, "r", encoding="utf-8") as f:
-            return f.read()
+        return Path("my_brain_system_prompt_01.md").read_text()
 
 
-    async def run(self, max_steps: int = 1000):
+    async def run(self) -> ActionResult:
         logger.info(f'Starting planning task at {self.ctx.run_id}')
         
-        for step_number in range(max_steps):
-            is_done, is_success = await self.step(step_number=step_number, max_steps=max_steps)
-            if is_done:
-                logger.info(f'Task completed at step {step_number} with success: {is_success}')
+        for step_number in range(self.max_steps):
+            action_result = await self.step(step_number=step_number)
+            if action_result.is_done:
+                logger.info(f'Task completed at step {step_number} with success: {action_result.success}')
                 break
         else:
-            logger.info(f'Task failed after max {max_steps} steps')
+            logger.info(f'Task failed after max {self.max_steps} steps')
+
+        return action_result
     
 
-    async def step(self, step_number: int, max_steps: int):
-        my_utils.log_step_info(logger, step_number, max_steps)
+    async def step(self, step_number: int) -> ActionResult:
+        my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps)
         
         messages = self.message_manager.get_messages()        
         messages.append({
             "role": "user",
             "content": f"Current step: {step_number}\n"
-                       f"Current date and time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}"
+                       f"Current date and time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M') }"
         })
         
         logger.info(f"Step {step_number}, Sending messages to the model...")
         response = self.ctx.openai_client.responses.create(
-            # model="o4-mini",
             model="o3",
-            # reasoning={"effort": "medium"},
             reasoning={"effort": "high"},
             input=messages,
-            text=self.output_schema,
+            tools=self.my_agent_tools.tools_schema,
             tool_choice="auto",
             parallel_tool_calls=False,
-            store=False
+            store=False,
         )
         
-        is_done = True
-        is_success = False
+        action_result = ActionResult(
+            action_result_msg="No action executed. The model did not return a function tool call.",
+            success=True,
+            is_done=False
+        )
 
+        planner_agent_output = None
         if response.output_text:
-            planner_agent_output = json.loads(response.output_text)
-            self.message_manager.add_ai_message(content=json.dumps(planner_agent_output, indent=2))
-            logger.info(f"Step {step_number}, Response Message:\n{json.dumps(planner_agent_output, indent=2)}")
+            try:
+                planner_agent_output = json.loads(response.output_text)
+                self.message_manager.add_ai_message(content=json.dumps(planner_agent_output, indent=2))
+                logger.info(f"Step {step_number}, Response Message:\n{json.dumps(planner_agent_output, indent=2)}")
+            except Exception:
+                logger.error("Step %s, Failed to parse output_text as JSON", step_number)
 
-            if planner_agent_output.get('plan') and planner_agent_output.get('output_schema'):
-                with open(f"my_navigator_agent_user_prompt_00.json", 'w') as f:
-                    json.dump(planner_agent_output, f, indent=2)
-                
-                is_success = True
-        else:
-            logger.info(f"Step {step_number}, Empty Response Message.")
+        function_tool_call: ResponseFunctionToolCall = next((item for item in response.output if isinstance(item, ResponseFunctionToolCall)), None)
 
-        return is_done, is_success
+        if function_tool_call:
+            self.message_manager.add_ai_function_tool_call_message(function_tool_call=function_tool_call)
+            logger.info(f"Step {step_number}, Function Tool Call:\n{function_tool_call.to_json()}")
+
+            action_result = await self.my_agent_tools.execute_tool(function_tool_call=function_tool_call)
+            logger.info(f'Step {step_number}, Function Tool Call Result: {action_result.action_result_msg}')
+
+            self.message_manager.add_tool_result_message(result_message=action_result.action_result_msg,
+                                                         tool_call_id=function_tool_call.call_id)
+        
+        return action_result

@@ -4,3 +4,4 @@
 
 - Test other markdown library. Microsoft and others have recently released possible better ones than markdownify.
 
+- Is Step a function tool in itself that the agent can call?

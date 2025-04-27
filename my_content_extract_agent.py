@@ -35,6 +35,7 @@ class MyContentExtractAgent:
         schema.
     """
     def __init__(self, ctx: my_utils.MyAgentContext, extraction_goal: str, row_schema: str):
+        self.max_steps = 10
         self.ctx = ctx
         self.extraction_goal = extraction_goal
         self.output_schema = my_utils.convert_simplified_schema_to_openai_output_schema(row_schema)
@@ -55,7 +56,7 @@ class MyContentExtractAgent:
         with open( "my_content_extract_system_prompt_00.md", "r", encoding="utf-8") as fh:
             return fh.read()
         
-    async def run(self, max_steps: int = 1000) -> tuple[list[dict], str]:
+    async def run(self) -> tuple[list[dict], str]:
         """Execute the extraction workflow and return the resulting rows.
 
         Returns

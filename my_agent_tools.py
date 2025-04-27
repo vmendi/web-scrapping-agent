@@ -5,14 +5,11 @@ from typing import Any, Awaitable, Callable, List, Optional
 from functools import cached_property
 from pydantic import BaseModel
 
-from openai import OpenAI
 from openai.types.responses import ResponseFunctionToolCall
 from agents.function_schema import function_schema
 from agents import RunContextWrapper
-from browser_use.browser.context import BrowserContext
 from my_content_extract_agent import MyContentExtractAgent
 from my_utils import MyAgentContext
-
 
 logger = logging.getLogger(__name__)
 
@@ -182,35 +179,6 @@ async def switch_tab(ctx: RunContextWrapper[MyAgentContext], page_id: int) -> Ac
     
     return ActionResult(action_result_msg=f'Switched to tab {page_id}',
                         success=True)
-
-
-async def extract_content(ctx: RunContextWrapper[MyAgentContext], extraction_goal: str, row_schema: str) -> ActionResult:
-    """Extracts content from the current page based on specific extraction goal and row schema.
-
-    Args:    
-        extraction_goal: str - A natural language description of what information should be extracted.
-        row_schema: str - A JSON schema describing the *shape of a single row* of the table that should be extracted. Use `snake_case` keys. Example:
-            ```json
-            {
-                "some_name": "string",
-                "the_age": "integer"
-            }
-            ```
-    """
-    try:
-        agent = MyContentExtractAgent(
-            ctx=ctx,
-            extraction_goal=extraction_goal,
-            row_schema=row_schema,            
-        )
-
-        rows, csv_path = await agent.run()
-
-        return ActionResult(action_result_msg=f"Successfully extracted {len(rows)} rows. Saved to {csv_path}", success=True)
-    
-    except Exception as e:
-        logger.error("Content extraction agent failed: %s", e)
-        return ActionResult(action_result_msg=f"Extraction failed: {e}",  success=False)
 
 
 async def scroll_down(ctx: RunContextWrapper[MyAgentContext], amount: int) -> ActionResult:
@@ -497,7 +465,6 @@ class MyNavigatorAgentTools():
             click_element,
             open_tab,
             switch_tab,
-            extract_content,
             scroll_down,
             scroll_up,
             send_keys,
@@ -534,5 +501,99 @@ class MyNavigatorAgentTools():
         
         tool_args = json.loads(function_tool_call.arguments)
 
+        return await tool(self.ctx, **tool_args)
+        
+
+async def wna_navigate_and_find(ctx: RunContextWrapper[MyAgentContext], navigation_goal: str) -> ActionResult:
+    """Invoke the Web Navigation Agent (WNA) to autonomously browse the web until the navigation goal is satisfied.
+
+    Args:
+        navigation_goal: str - A concise, natural-language description of what the navigator should accomplish.
+            It should focus on *where* to end up or *what* to locate, rather than prescribing individual clicks.
+            Examples:
+                - "Open https://news.ycombinator.com and scroll to the first post that mentions GPT".
+                - "Go to finance.yahoo.com and bring me to the detailed quote page for NVDA.".
+    """
+    from my_navigator_agent import MyNavigatorAgent  # local import to avoid circular dependency
+    navigator = MyNavigatorAgent(ctx=ctx, navigation_goal=navigation_goal)
+    nav_result: ActionResult = await navigator.run()
+    return ActionResult(action_result_msg=nav_result.action_result_msg, success=nav_result.success)
+
+
+async def cea_extract_content(ctx: RunContextWrapper[MyAgentContext], extraction_goal: str, row_schema: str) -> ActionResult:
+    """Invoke the Content Extraction Agent (CEA) to scrape structured data from a page.
+
+    Args:    
+        extraction_goal: str - A natural language description of what information should be extracted.
+        row_schema: str - A simplified schema in JSON format describing the *shape of a single row* of the table that should be extracted. Use `snake_case` keys. Example:
+            ```json
+            {
+                "some_name": "string",
+                "the_age": "integer"
+            }
+            ```
+    """
+    try:
+        agent = MyContentExtractAgent(
+            ctx=ctx,
+            extraction_goal=extraction_goal,
+            row_schema=row_schema,            
+        )
+
+        rows, csv_path = await agent.run()
+
+        result_payload = {
+            "status": "success",
+            "status_message": f"Successfully extracted and persisted {len(rows)} items to {csv_path}.",
+            "persisted_count": len(rows),
+        }
+        return ActionResult(action_result_msg=json.dumps(result_payload), success=True)
+    
+    except Exception as e:
+        result_payload = {
+            "status": "failure",
+            "status_message": str(e),
+            "persisted_count": 0,
+        }
+        return ActionResult(action_result_msg=json.dumps(result_payload), success=False)
+
+
+class MyBrainAgentTools:
+    """Tools exposed to the Brain Agent (BA).
+
+    These tools allow the BA to orchestrate sub-agents (WNA, CEA) and report completion.
+    """
+    def __init__(self, ctx: MyAgentContext):
+        self.ctx = ctx
+        self.tools: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]] = [
+            done,
+            wna_navigate_and_find,
+            cea_extract_content,
+        ]
+
+    def get_tools(self):
+        return self.tools
+
+    @cached_property
+    def tools_schema(self) -> list[dict]:
+        tools_schema = []
+        for tool in self.tools:
+            function_tool_schema = function_schema(tool)
+            tools_schema.append({
+                "type": "function",
+                "name": function_tool_schema.name,
+                "parameters": function_tool_schema.params_json_schema,
+                "strict": function_tool_schema.strict_json_schema,
+                "description": function_tool_schema.description,
+            })
+        return tools_schema
+
+    async def execute_tool(self, function_tool_call: ResponseFunctionToolCall) -> ActionResult:
+        tool_name = function_tool_call.name
+        tool = next((t for t in self.tools if t.__name__ == tool_name), None)
+        if not tool:
+            return ActionResult(action_result_msg=f"Tool '{tool_name}' not found", success=False)
+
+        tool_args = json.loads(function_tool_call.arguments)
         return await tool(self.ctx, **tool_args)
         
