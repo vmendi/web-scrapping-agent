@@ -5,7 +5,7 @@ from pathlib import Path
 from browser_use.browser.views import BrowserState
 from openai.types.responses import ResponseFunctionToolCall
 from pydantic import BaseModel, ConfigDict
-from my_agent_tools import ActionResult, MyNavigatorAgentTools
+from my_agent_tools import ActionResult, MyAgentTools, NAVIGATOR_TOOLS
 import my_utils
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,9 @@ class MyNavigatorAgent():
     def __init__(self, ctx: my_utils.MyAgentContext, navigation_goal: str):
         self.max_steps = 100
         self.ctx = ctx
-        self.my_agent_tools = MyNavigatorAgentTools(ctx=self.ctx)
+        # MyAgentTools expects the list of tools to expose – here we pass the default
+        # navigator tool set from my_agent_tools.NAVIGATOR_TOOLS
+        self.my_agent_tools = MyAgentTools(ctx=self.ctx, tools=NAVIGATOR_TOOLS)
         
         self.output_schema = my_utils.convert_pydantic_model_to_openai_output_schema(NavigatorAgentOutputModel)
         

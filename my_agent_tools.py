@@ -452,58 +452,6 @@ async def select_dropdown_option(ctx: RunContextWrapper[MyAgentContext], index: 
                             success=False)
 
 
-class MyNavigatorAgentTools():
-    def __init__(self, ctx: MyAgentContext):
-        self.ctx = ctx
-
-        self.tools: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]] = [
-            done,
-            search_google,
-            go_back,
-            go_to_url,
-            input_text,
-            click_element,
-            open_tab,
-            switch_tab,
-            scroll_down,
-            scroll_up,
-            send_keys,
-            scroll_to_text,
-            get_dropdown_options,
-            select_dropdown_option,
-        ]
-        
-    
-    def get_tools(self):
-        return self.tools
-    
-
-    @cached_property
-    def tools_schema(self) -> list[dict]:		
-        tools_schema = []
-        for tool in self.tools:
-            function_tool_schema = function_schema(tool)
-            tools_schema.append({
-                "type": "function",
-                "name": function_tool_schema.name,
-                "parameters": function_tool_schema.params_json_schema,
-                "strict": function_tool_schema.strict_json_schema,
-                "description": function_tool_schema.description,
-            })
-        return tools_schema
-    
-    async def execute_tool(self, function_tool_call: ResponseFunctionToolCall) -> ActionResult:
-        tool_name = function_tool_call.name
-        tool = next((t for t in self.tools if t.__name__ == tool_name), None)
-        if not tool:
-            return ActionResult(action_result_msg=f"Tool '{tool_name}' not found",
-                                success=False)
-        
-        tool_args = json.loads(function_tool_call.arguments)
-
-        return await tool(self.ctx, **tool_args)
-        
-
 async def wna_navigate_and_find(ctx: RunContextWrapper[MyAgentContext], navigation_goal: str) -> ActionResult:
     """Invoke the Web Navigation Agent (WNA) to autonomously browse the web until the navigation goal is satisfied.
 
@@ -515,8 +463,10 @@ async def wna_navigate_and_find(ctx: RunContextWrapper[MyAgentContext], navigati
                 - "Go to finance.yahoo.com and bring me to the detailed quote page for NVDA.".
     """
     from my_navigator_agent import MyNavigatorAgent  # local import to avoid circular dependency
+    
     navigator = MyNavigatorAgent(ctx=ctx, navigation_goal=navigation_goal)
     nav_result: ActionResult = await navigator.run()
+
     return ActionResult(action_result_msg=nav_result.action_result_msg, success=nav_result.success)
 
 
@@ -558,25 +508,18 @@ async def cea_extract_content(ctx: RunContextWrapper[MyAgentContext], extraction
         return ActionResult(action_result_msg=json.dumps(result_payload), success=False)
 
 
-class MyBrainAgentTools:
-    """Tools exposed to the Brain Agent (BA).
-
-    These tools allow the BA to orchestrate sub-agents (WNA, CEA) and report completion.
-    """
-    def __init__(self, ctx: MyAgentContext):
+class MyAgentTools:
+    def __init__(self, ctx: MyAgentContext, 
+                 tools: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]]):
         self.ctx = ctx
-        self.tools: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]] = [
-            done,
-            wna_navigate_and_find,
-            cea_extract_content,
-        ]
+        self.tools = list(tools)
 
     def get_tools(self):
         return self.tools
 
     @cached_property
     def tools_schema(self) -> list[dict]:
-        tools_schema = []
+        tools_schema: list[dict] = []
         for tool in self.tools:
             function_tool_schema = function_schema(tool)
             tools_schema.append({
@@ -596,4 +539,40 @@ class MyBrainAgentTools:
 
         tool_args = json.loads(function_tool_call.arguments)
         return await tool(self.ctx, **tool_args)
-        
+
+
+
+BRAIN_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]] = [
+    done,
+    wna_navigate_and_find,
+    cea_extract_content,
+]
+
+NAVIGATOR_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]] = [
+    done,
+    search_google,
+    go_back,
+    go_to_url,
+    input_text,
+    click_element,
+    open_tab,
+    switch_tab,
+    scroll_down,
+    scroll_up,
+    send_keys,
+    scroll_to_text,
+    get_dropdown_options,
+    select_dropdown_option,
+]
+
+
+
+class MyBrainAgentTools(MyAgentTools):
+    def __init__(self, ctx: MyAgentContext):
+        super().__init__(ctx, tools=BRAIN_TOOLS)
+
+
+class MyNavigatorAgentTools(MyAgentTools):
+    def __init__(self, ctx: MyAgentContext):
+        super().__init__(ctx, tools=NAVIGATOR_TOOLS)
+
