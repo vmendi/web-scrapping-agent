@@ -37,6 +37,7 @@ class MyContentExtractAgent:
     def __init__(self, ctx: my_utils.MyAgentContext, extraction_goal: str, row_schema: str):
         self.max_steps = 10
         self.ctx = ctx
+        self.agent_id = ctx.generate_next_child_agent_id()
         self.extraction_goal = extraction_goal
         self.output_schema = my_utils.convert_simplified_schema_to_openai_output_schema(row_schema)
 

@@ -26,6 +26,12 @@ class MyAgentContext:
     openai_client: OpenAI
     save_dir: str
     run_id: str
+    child_agent_next_id: int = 0
+
+    def generate_next_child_agent_id(self) -> int:
+        next_id = self.child_agent_next_id
+        self.child_agent_next_id += 1
+        return next_id
 
 
 def convert_pydantic_model_to_openai_output_schema(model: Type[BaseModel]) -> dict:    

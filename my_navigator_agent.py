@@ -23,10 +23,8 @@ class MyNavigatorAgent():
     def __init__(self, ctx: my_utils.MyAgentContext, navigation_goal: str):
         self.max_steps = 100
         self.ctx = ctx
-        # MyAgentTools expects the list of tools to expose – here we pass the default
-        # navigator tool set from my_agent_tools.NAVIGATOR_TOOLS
-        self.my_agent_tools = MyAgentTools(ctx=self.ctx, tools=NAVIGATOR_TOOLS)
-        
+        self.agent_id = ctx.generate_next_child_agent_id()
+        self.my_agent_tools = MyAgentTools(ctx=self.ctx, tools=NAVIGATOR_TOOLS)        
         self.output_schema = my_utils.convert_pydantic_model_to_openai_output_schema(NavigatorAgentOutputModel)
         
         self.message_manager = my_utils.MessageManager(system_message_content=self.get_system_message())
@@ -67,7 +65,7 @@ class MyNavigatorAgent():
         my_utils.MessageManager.persist_state(messages=messages, 
                                               screenshot_base64=browser_state.screenshot, 
                                               step_number=step_number,
-                                              save_dir=self.ctx.save_dir)
+                                              save_dir=f"{self.ctx.save_dir}/navigator_agent_{self.agent_id:02d}")
         
         await self.ctx.browser_context.remove_highlights()
         

@@ -484,12 +484,7 @@ async def cea_extract_content(ctx: RunContextWrapper[MyAgentContext], extraction
             ```
     """
     try:
-        agent = MyContentExtractAgent(
-            ctx=ctx,
-            extraction_goal=extraction_goal,
-            row_schema=row_schema,            
-        )
-
+        agent = MyContentExtractAgent(ctx=ctx, extraction_goal=extraction_goal, row_schema=row_schema)
         rows, csv_path = await agent.run()
 
         result_payload = {
@@ -509,8 +504,7 @@ async def cea_extract_content(ctx: RunContextWrapper[MyAgentContext], extraction
 
 
 class MyAgentTools:
-    def __init__(self, ctx: MyAgentContext, 
-                 tools: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]]):
+    def __init__(self, ctx: MyAgentContext, tools: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]]):
         self.ctx = ctx
         self.tools = list(tools)
 

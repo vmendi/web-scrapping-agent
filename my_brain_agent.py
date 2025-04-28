@@ -28,16 +28,14 @@ logger = logging.getLogger(__name__)
 
 #     class PlanStep(BaseModel):
 #         step_id: int = Field(description="Sequential identifier for the step")
-#         agent: str = Field(description="Must always be 'WNA'")
-#         goal: str = Field(description="The objective for the WNA in this step")
-#         input_hints: list[str] = Field(description="High-level guidance/keywords for WNA")
-#         output_criteria: str = Field(description="Description of the successful outcome for this WNA step")
+#         goal: str = Field(description="The objective for the Brain Agent in this step. It should be a concise description of what the agent should accomplish using the tools available.")
+#         success_criteria: str = Field(description="Description of a successful outcome for this step")
 
 #     output_schema: list[OutputField] = Field(
 #         description="A list defining the fields for the final output object. Each field should have a name (snake_case), type, and description."
 #     )
 #     plan: list[PlanStep] = Field(
-#         description="A sequential list of steps only for the WNA"
+#         description="A sequential list of steps that represents the current plan for the Brain Agent"
 #     )
 
 
@@ -45,6 +43,7 @@ class MyBrainAgent():
     def __init__(self, ctx: my_utils.MyAgentContext):
         self.max_steps = 1000
         self.ctx = ctx
+        self.agent_id = ctx.generate_next_child_agent_id()
         # self.output_schema = my_utils.convert_pydantic_model_to_openai_output_schema(PlannerAgentOutputModel)
         
         self.my_agent_tools = MyBrainAgentTools(ctx=self.ctx)
@@ -86,7 +85,7 @@ class MyBrainAgent():
         logger.info(f"Step {step_number}, Sending messages to the model...")
         response = self.ctx.openai_client.responses.create(
             model="o3",
-            reasoning={"effort": "high"},
+            reasoning={"effort": "medium"},
             input=messages,
             tools=self.my_agent_tools.tools_schema,
             tool_choice="auto",
@@ -100,15 +99,11 @@ class MyBrainAgent():
             is_done=False
         )
 
-        planner_agent_output = None
         if response.output_text:
-            try:
-                planner_agent_output = json.loads(response.output_text)
-                self.message_manager.add_ai_message(content=json.dumps(planner_agent_output, indent=2))
-                logger.info(f"Step {step_number}, Response Message:\n{json.dumps(planner_agent_output, indent=2)}")
-            except Exception:
-                logger.error("Step %s, Failed to parse output_text as JSON", step_number)
+            self.message_manager.add_ai_message(content=response.output_text)
+            logger.info(f"Step {step_number}, Response Message:\n{response.output_text}")
 
+        # Check if the response contains a function tool call
         function_tool_call: ResponseFunctionToolCall = next((item for item in response.output if isinstance(item, ResponseFunctionToolCall)), None)
 
         if function_tool_call:
