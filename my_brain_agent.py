@@ -75,17 +75,16 @@ class MyBrainAgent():
     async def step(self, step_number: int) -> ActionResult:
         my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps)
         
-        messages = self.message_manager.get_messages()        
-        messages.append({
-            "role": "user",
-            "content": f"Current step: {step_number}\n"
-                       f"Current date and time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M') }"
-        })
-        
+        self.message_manager.add_user_message(content=f"Current step: {step_number}\nCurrent date and time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        messages = self.message_manager.get_messages()
+        my_utils.MessageManager.persist_state(messages=messages, 
+                                              step_number=step_number,
+                                              save_dir=f"{self.ctx.save_dir}/brain_agent")
+
         logger.info(f"Step {step_number}, Sending messages to the model...")
         response = self.ctx.openai_client.responses.create(
             model="o3",
-            reasoning={"effort": "medium"},
+            reasoning={"effort": "high"},
             input=messages,
             tools=self.my_agent_tools.tools_schema,
             tool_choice="auto",
@@ -93,11 +92,7 @@ class MyBrainAgent():
             store=False,
         )
         
-        action_result = ActionResult(
-            action_result_msg="No action executed. The model did not return a function tool call.",
-            success=True,
-            is_done=False
-        )
+        action_result = ActionResult(action_result_msg="No action executed. The model did not return a function tool call.", success=True, is_done=False)
 
         if response.output_text:
             self.message_manager.add_ai_message(content=response.output_text)

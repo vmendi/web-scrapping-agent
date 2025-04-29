@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 from typing import Type
 from pydantic import BaseModel
 from agents import AgentOutputSchema
@@ -128,24 +129,38 @@ class MessageManager:
         })
 
     def get_messages(self) -> list[dict]:
-        return self._messages
+        return copy.deepcopy(self._messages)
     
     @staticmethod
-    def persist_state(messages: list[dict], screenshot_base64: str, step_number: int, save_dir: str):         
+    def persist_state(messages: list[dict], step_number: int, save_dir: str):
+        os.makedirs(save_dir, exist_ok=True)
+        
+        # 1. Persist human-readable log + raw JSON (with screenshots redacted)
         state_file_name = f"{save_dir}/step_{step_number:02d}_messages"
-        screenshot_file_name = f"{save_dir}/step_{step_number:02d}_screenshot"
-
         with open(f"{state_file_name}.txt", "w") as f:
-            formatted_messages = MessageManager.get_pretty_formatted_messages(messages=messages, 
-                                                                       step_number=step_number)
+            formatted_messages = MessageManager.get_pretty_formatted_messages(messages=messages, step_number=step_number)
             f.write(formatted_messages)
 
         with open(f"{state_file_name}.json", "w") as f:
             json.dump(MessageManager.get_json_messages(messages=messages), f, indent=2)
 
-        with open(f"{screenshot_file_name}.png", "wb") as f:
-            f.write(base64.b64decode(screenshot_base64))
+        # 2. Extract every screenshot embedded in the messages and persist each one
+        screenshots: list[str] = []
+        for message in messages:
+            content = message.get("content")
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and item.get("type") == "input_image":
+                        image_url: str = item.get("image_url", "")
+                        prefix = "data:image/png;base64,"
+                        if image_url.startswith(prefix):
+                            screenshots.append(image_url[len(prefix):])
 
+        for idx, screenshot_base64 in enumerate(screenshots):
+            screenshot_file_name = f"{save_dir}/step_{step_number:02d}_screenshot_{idx:02d}.png"
+            with open(screenshot_file_name, "wb") as f:
+                f.write(base64.b64decode(screenshot_base64))
+            
 
     @staticmethod
     def get_json_messages(messages: list[dict]):

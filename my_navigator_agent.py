@@ -50,8 +50,7 @@ class MyNavigatorAgent():
         else:
             logger.info(f'Task failed after max {self.max_steps} steps')
 
-        return action_result
-    
+        return action_result    
     async def step(self, step_number: int) -> ActionResult:
         my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps)
         
@@ -61,11 +60,10 @@ class MyNavigatorAgent():
         # Add current state as the last message in the list before calling the model. We don't store it in the message manager 
         # on purpose: It's just transitory state. If the model wants to memorize anything, it will write it to its memory.
         messages.extend(self.get_current_state_message(current_step=step_number, browser_state=browser_state))
-        
+
         my_utils.MessageManager.persist_state(messages=messages, 
-                                              screenshot_base64=browser_state.screenshot, 
                                               step_number=step_number,
-                                              save_dir=f"{self.ctx.save_dir}/navigator_agent_{self.agent_id:02d}")
+                                              save_dir=f"{self.ctx.save_dir}/{self.agent_id:02d}_navigator_agent")
         
         await self.ctx.browser_context.remove_highlights()
         
@@ -74,9 +72,9 @@ class MyNavigatorAgent():
             # model="gpt-4.1-nano",
             # model="gpt-4.1-mini",
             # model="gpt-4.1",
-            model="o3",
-            # model="o4-mini",
-            reasoning={"effort": "high"},
+            # model="o3",
+            model="o4-mini",
+            reasoning={"effort": "medium"},
             input=messages,
             text=self.output_schema,
             tools=self.my_agent_tools.tools_schema,

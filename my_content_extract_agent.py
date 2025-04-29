@@ -79,13 +79,17 @@ class MyContentExtractAgent:
             content=("Here is the full page content rendered as Markdown. Perform the extraction according to the goal and schema described earlier.\n\n"
                      f"```markdown\n{markdown_content}\n```")
         )
+        my_utils.MessageManager.persist_state(messages=self.message_manager.get_messages(), 
+                                              step_number=0,
+                                              save_dir=f"{self.ctx.save_dir}/{self.agent_id:02d}_content_extract_agent")
 
         # 4. Call the LLM (single shot)
         messages = self.message_manager.get_messages()
         
         logger.info("Sending extraction prompt to OpenAI – input token count ≄ %s", len(str(messages)))
         response = self.ctx.openai_client.responses.create(
-            model="o4-mini",
+            model="o3",
+            reasoning={"effort": "high"},
             input=messages,
             text=self.output_schema,
             tools=[],
