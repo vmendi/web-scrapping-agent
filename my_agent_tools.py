@@ -463,7 +463,8 @@ async def wna_navigate_and_find(ctx: RunContextWrapper[MyAgentContext], navigati
     """
     from my_navigator_agent import MyNavigatorAgent  # local import to avoid circular dependency
     
-    navigator = MyNavigatorAgent(ctx=ctx, navigation_goal=navigation_goal)
+    navigator = MyNavigatorAgent(ctx=ctx.new_agent_context(), 
+                                 navigation_goal=navigation_goal)
     nav_result: ActionResult = await navigator.run()
 
     return ActionResult(action_result_msg=nav_result.action_result_msg, success=nav_result.success)
@@ -484,7 +485,9 @@ async def cea_extract_content(ctx: RunContextWrapper[MyAgentContext], extraction
     """
     try:
         from my_content_extract_agent import MyContentExtractAgent
-        agent = MyContentExtractAgent(ctx=ctx, extraction_goal=extraction_goal, row_schema=row_schema)
+        agent = MyContentExtractAgent(ctx=ctx.new_agent_context(), 
+                                      extraction_goal=extraction_goal, 
+                                      row_schema=row_schema)
         rows, csv_path = await agent.run()
 
         result_payload = {
@@ -501,6 +504,27 @@ async def cea_extract_content(ctx: RunContextWrapper[MyAgentContext], extraction
             "persisted_count": 0,
         }
         return ActionResult(action_result_msg=json.dumps(result_payload), success=False)
+
+
+class PlanStep(BaseModel):
+    step_id: int
+    goal: str
+    success_criteria: str
+    is_done: bool
+
+class Plan(BaseModel):
+    plan: list[PlanStep]
+
+
+async def persist_plan(ctx: RunContextWrapper[MyAgentContext], plan: Plan) -> ActionResult:
+    """Persist the plan to memory.
+
+    Args:
+        plan: Plan - The plan to persist.
+    """
+    ctx.memory["plan"] = plan
+
+    return ActionResult(action_result_msg=f"Plan persisted to memory", success=True)
 
 
 class MyAgentTools:
@@ -540,6 +564,7 @@ BRAIN_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[A
     done,
     wna_navigate_and_find,
     cea_extract_content,
+    persist_plan,
 ]
 
 NAVIGATOR_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]] = [

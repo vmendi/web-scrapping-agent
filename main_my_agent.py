@@ -53,7 +53,7 @@ async def main():
     
     try:
         # agent = MyNavigatorAgent(ctx=ctx)
-        agent = MyBrainAgent(ctx=ctx)
+        agent = MyBrainAgent(ctx=ctx.new_agent_context())
         await agent.run()
     finally:
         if browser_context:

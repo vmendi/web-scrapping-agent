@@ -43,7 +43,6 @@ class MyBrainAgent():
     def __init__(self, ctx: my_utils.MyAgentContext):
         self.max_steps = 1000
         self.ctx = ctx
-        self.agent_id = ctx.generate_next_child_agent_id()
         # self.output_schema = my_utils.convert_pydantic_model_to_openai_output_schema(PlannerAgentOutputModel)
         
         self.my_agent_tools = MyBrainAgentTools(ctx=self.ctx)
@@ -74,42 +73,44 @@ class MyBrainAgent():
 
     async def step(self, step_number: int) -> ActionResult:
         my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps)
-        
-        self.message_manager.add_user_message(content=f"Current step: {step_number}\nCurrent date and time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
+                
+        self.message_manager.add_ai_message(content=f"Current step: {step_number}")
         messages = self.message_manager.get_messages()
+        messages.append({
+            "role": "assistant",
+            "content": f"Current plan: {json.dumps(self.ctx.memory.get('plan', {}))}"
+        })
         my_utils.MessageManager.persist_state(messages=messages, 
                                               step_number=step_number,
                                               save_dir=f"{self.ctx.save_dir}/brain_agent")
 
         logger.info(f"Step {step_number}, Sending messages to the model...")
         response = self.ctx.openai_client.responses.create(
-            model="o3",
-            reasoning={"effort": "high"},
+            model="o4-mini",
+            reasoning={"effort": "medium", "summary": "detailed"},
             input=messages,
             tools=self.my_agent_tools.tools_schema,
             tool_choice="auto",
             parallel_tool_calls=False,
             store=False,
-            temperature=0.0,
+            # temperature=0.0 # Not supported for o3 and o4-mini
         )
-        
-        action_result = ActionResult(action_result_msg="No action executed. The model did not return a function tool call.", success=True, is_done=False)
 
         if response.output_text:
-            self.message_manager.add_ai_message(content=response.output_text)
             logger.info(f"Step {step_number}, Response Message:\n{response.output_text}")
-
-        # Check if the response contains a function tool call
-        function_tool_call: ResponseFunctionToolCall = next((item for item in response.output if isinstance(item, ResponseFunctionToolCall)), None)
-
-        if function_tool_call:
-            self.message_manager.add_ai_function_tool_call_message(function_tool_call=function_tool_call)
+            self.message_manager.add_ai_message(content=response.output_text)            
+        else:
+            function_tool_call: ResponseFunctionToolCall = next((item for item in response.output if isinstance(item, ResponseFunctionToolCall)), None)
+            if not function_tool_call:
+                raise Exception(f"Step {step_number}, No function tool call or response message")
+            
             logger.info(f"Step {step_number}, Function Tool Call:\n{function_tool_call.to_json()}")
-
+            self.message_manager.add_ai_function_tool_call_message(function_tool_call=function_tool_call)
+            
             action_result = await self.my_agent_tools.execute_tool(function_tool_call=function_tool_call)
             logger.info(f'Step {step_number}, Function Tool Call Result: {action_result.action_result_msg}')
 
             self.message_manager.add_tool_result_message(result_message=action_result.action_result_msg,
                                                          tool_call_id=function_tool_call.call_id)
-        
+                
         return action_result

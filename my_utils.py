@@ -2,7 +2,7 @@ import datetime
 import json
 import logging
 import os
-from typing import Type
+from typing import ClassVar, Type
 from pydantic import BaseModel
 from agents import AgentOutputSchema
 from openai.types.responses import ResponseFunctionToolCall
@@ -29,13 +29,26 @@ class MyAgentContext:
     openai_client: OpenAI
     save_dir: str
     run_id: str
-    child_agent_next_id: int = 0
 
-    def generate_next_child_agent_id(self) -> int:
-        next_id = self.child_agent_next_id
-        self.child_agent_next_id += 1
+    agent_id: int = -1
+    memory: dict = None
+
+    def new_agent_context(self):
+        return MyAgentContext(browser_context=self.browser_context,
+                              openai_client=self.openai_client,
+                              save_dir=self.save_dir,
+                              run_id=self.run_id,
+                              agent_id=MyAgentContext.generate_next_agent_id(),
+                              memory={})
+
+    @staticmethod
+    def generate_next_agent_id() -> int:
+        if not hasattr(MyAgentContext.generate_next_agent_id, "_next_agent_id"):
+            MyAgentContext.generate_next_agent_id._next_agent_id = 0
+        next_id = MyAgentContext.generate_next_agent_id._next_agent_id
+        MyAgentContext.generate_next_agent_id._next_agent_id += 1
         return next_id
-
+    
 
 def convert_pydantic_model_to_openai_output_schema(model: Type[BaseModel]) -> dict:    
     agent_output_schema = AgentOutputSchema(model, strict_json_schema=True)
