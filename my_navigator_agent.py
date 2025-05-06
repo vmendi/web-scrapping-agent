@@ -21,7 +21,6 @@ class MyNavigatorAgent():
     def __init__(self, ctx: my_utils.MyAgentContext, navigation_goal: str):
         self.max_steps = 100
         self.ctx = ctx
-        self.agent_id = ctx.generate_next_child_agent_id()
         self.my_agent_tools = MyAgentTools(ctx=self.ctx, tools=NAVIGATOR_TOOLS)        
         self.output_schema = my_utils.convert_pydantic_model_to_openai_output_schema(NavigatorAgentOutputModel)
         
@@ -61,7 +60,7 @@ class MyNavigatorAgent():
 
         my_utils.MessageManager.persist_state(messages=messages, 
                                               step_number=step_number,
-                                              save_dir=f"{self.ctx.save_dir}/{self.agent_id:02d}_navigator_agent")
+                                              save_dir=f"{self.ctx.save_dir}/{self.ctx.agent_id:02d}_navigator_agent")
         
         await self.ctx.browser_context.remove_highlights()
         
@@ -70,45 +69,37 @@ class MyNavigatorAgent():
             # model="gpt-4.1-nano",
             # model="gpt-4.1-mini",
             # model="gpt-4.1",
-            # model="o3",
-            model="o4-mini",
+            model="o3",
+            # model="o4-mini",
             reasoning={"effort": "medium"},
             input=messages,
             text=self.output_schema,
             tools=self.my_agent_tools.tools_schema,
-            tool_choice="auto",         # auto, required, none, or just one particular tool. If required, we dont get output text.
             parallel_tool_calls=False,
-            store=False,
-            temperature=0.0,
+            store=False
         )
         
-        # ACT!
         if response.output_text:
             navigator_agent_output = json.loads(response.output_text)
-            self.message_manager.add_ai_message(content=json.dumps(navigator_agent_output, indent=2))
             logger.info(f"Step {step_number}, Response Message:\n{json.dumps(navigator_agent_output, indent=2)}")
+            self.message_manager.add_ai_message(content=json.dumps(navigator_agent_output, indent=2))            
+            action_result = ActionResult(action_result_msg="No action executed. The model output is a reflection.", 
+                                         success=True, 
+                                         is_done=False)
         else:
-            logger.info(f"Step {step_number}, Empty Response Message.")
+            # Get the function tool call from the array of output messages
+            function_tool_call: ResponseFunctionToolCall = next((item for item in response.output if isinstance(item, ResponseFunctionToolCall)), None)
 
-        action_result = ActionResult(action_result_msg="No action executed. The model did not return a function tool call.", 
-                                     success=True, 
-                                     is_done=False)
-
-        # Get the function tool call from the array of output messages
-        function_tool_call: ResponseFunctionToolCall = next((item for item in response.output if isinstance(item, ResponseFunctionToolCall)), None)
-
-        if function_tool_call:
+            if not function_tool_call:
+                raise Exception(f"Step {step_number}, No function tool call or response output text")
+            
             self.message_manager.add_ai_function_tool_call_message(function_tool_call=function_tool_call)
             logger.info(f"Step {step_number}, Function Tool Call:\n{function_tool_call.to_json()}")
             
-            # Execute the tool
             action_result = await self.my_agent_tools.execute_tool(function_tool_call=function_tool_call)
             logger.info(f'Step {step_number}, Function Tool Call Result: {action_result.action_result_msg}')
             
-            # Add the tool result message using the correct tool_call_id
             self.message_manager.add_tool_result_message(result_message=action_result.action_result_msg,
                                                          tool_call_id=function_tool_call.call_id)
-        else:
-            logger.info(f"Step {step_number}, No function tool call in the response")
-
+    
         return action_result

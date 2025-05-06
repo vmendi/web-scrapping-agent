@@ -86,19 +86,22 @@ class MyBrainAgent():
 
         logger.info(f"Step {step_number}, Sending messages to the model...")
         response = self.ctx.openai_client.responses.create(
-            model="o4-mini",
-            reasoning={"effort": "medium", "summary": "detailed"},
+            model="4.1",
+            # reasoning={"effort": "medium", "summary": "detailed"},
             input=messages,
             tools=self.my_agent_tools.tools_schema,
             tool_choice="auto",
             parallel_tool_calls=False,
             store=False,
-            # temperature=0.0 # Not supported for o3 and o4-mini
+            temperature=0.0     # Not supported for o3 and o4-mini
         )
 
         if response.output_text:
             logger.info(f"Step {step_number}, Response Message:\n{response.output_text}")
-            self.message_manager.add_ai_message(content=response.output_text)            
+            self.message_manager.add_ai_message(content=response.output_text)   
+            action_result = ActionResult(action_result_msg="No action executed. The model output is text.", 
+                                         success=True, 
+                                         is_done=False)
         else:
             function_tool_call: ResponseFunctionToolCall = next((item for item in response.output if isinstance(item, ResponseFunctionToolCall)), None)
             if not function_tool_call:
