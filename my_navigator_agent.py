@@ -56,40 +56,38 @@ class MyNavigatorAgent():
         
         # Add current state as the last message in the list before calling the model. We don't store it in the message manager 
         # on purpose: It's just transitory state. If the model wants to memorize anything, it will write it to its memory.
-        messages.extend(my_utils.get_current_state_message(current_step=step_number, browser_state=browser_state))
+        messages.extend(my_utils.get_current_browser_state_message(current_step=step_number, browser_state=browser_state))
 
         my_utils.MessageManager.persist_state(messages=messages, 
                                               step_number=step_number,
                                               save_dir=f"{self.ctx.save_dir}/{self.ctx.agent_id:02d}_navigator_agent")
-        
-        await self.ctx.browser_context.remove_highlights()
-        
+                
         logger.info(f"Step {step_number}, Sending messages to the model...")
         response = self.ctx.openai_client.responses.create(
             # model="gpt-4.1-nano",
             # model="gpt-4.1-mini",
-            # model="gpt-4.1",
-            model="o3",
+            model="gpt-4.1",
+            # model="o3",
             # model="o4-mini",
-            reasoning={"effort": "medium"},
+            # reasoning={"effort": "medium"},
             input=messages,
             text=self.output_schema,
             tools=self.my_agent_tools.tools_schema,
             parallel_tool_calls=False,
-            store=False
+            store=False,
+            temperature=0.0     # Not supported for o3 and o4-mini
         )
-        
+        await self.ctx.browser_context.remove_highlights()
+
         if response.output_text:
             navigator_agent_output = json.loads(response.output_text)
             logger.info(f"Step {step_number}, Response Message:\n{json.dumps(navigator_agent_output, indent=2)}")
             self.message_manager.add_ai_message(content=json.dumps(navigator_agent_output, indent=2))            
-            action_result = ActionResult(action_result_msg="No action executed. The model output is a reflection.", 
+            action_result = ActionResult(action_result_msg="No action executed. The model output is text.", 
                                          success=True, 
                                          is_done=False)
         else:
-            # Get the function tool call from the array of output messages
             function_tool_call: ResponseFunctionToolCall = next((item for item in response.output if isinstance(item, ResponseFunctionToolCall)), None)
-
             if not function_tool_call:
                 raise Exception(f"Step {step_number}, No function tool call or response output text")
             

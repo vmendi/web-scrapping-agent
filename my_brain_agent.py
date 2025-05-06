@@ -86,7 +86,7 @@ class MyBrainAgent():
 
         logger.info(f"Step {step_number}, Sending messages to the model...")
         response = self.ctx.openai_client.responses.create(
-            model="4.1",
+            model="gpt-4.1",
             # reasoning={"effort": "medium", "summary": "detailed"},
             input=messages,
             tools=self.my_agent_tools.tools_schema,

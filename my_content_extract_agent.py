@@ -105,7 +105,7 @@ class MyContentExtractAgent:
 
         browser_state = await self.ctx.browser_context.get_state()
         messages = self.message_manager.get_messages()
-        messages.extend(my_utils.get_current_state_message(current_step=step_number, browser_state=browser_state))
+        messages.extend(my_utils.get_current_browser_state_message(current_step=step_number, browser_state=browser_state))
         
         page = await self.ctx.browser_context.get_current_page()
         html = await page.content()

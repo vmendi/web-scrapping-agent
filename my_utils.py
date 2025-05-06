@@ -249,7 +249,7 @@ def log_step_info(logger: logging.Logger, step_number: int, max_steps: int) -> N
 
 
 @staticmethod
-def get_current_state_message(current_step: int, browser_state: BrowserState) -> list[dict]:
+def get_current_browser_state_message(current_step: int, browser_state: BrowserState) -> list[dict]:
     include_attributes: list[str] = [
         'title',
         'type',
@@ -282,24 +282,20 @@ def get_current_state_message(current_step: int, browser_state: BrowserState) ->
     return [
         {
             "role": "user",
-            "content": f"[Current state starts here]\n"
-                        f"Current step: {current_step}\n"
-                        f"Current date and time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
-                        f"Current url: {browser_state.url}\n"
-                        f"Available tabs:\n{browser_state.tabs}\n"
-                        f"Interactive elements from top layer of the current page inside the viewport:\n{elements_text}\n"
-                        f"[Current state ends here]"
-        },
-        {
-            'role': 'user',
-            'content': [
+            "content": [
                 {
-                    'type': 'input_text',
-                    'text': 'Here is a screenshot of the current state of the browser:'
+                    "type": "input_text",
+                    "text": f"[Current state starts here]\n"
+                            f"Current step: {current_step}\n"
+                            f"Current date and time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+                            f"Current url: {browser_state.url}\n"
+                            f"Available tabs:\n{browser_state.tabs}\n"
+                            f"Interactive elements from top layer of the current page inside the viewport:\n{elements_text}\n"
+                            f"[Current state ends here]"
                 },
                 {
-                    'type': 'input_image',
-                    'image_url': f"data:image/png;base64,{browser_state.screenshot}",
+                    "type": "input_image",
+                    "image_url": f"data:image/png;base64,{browser_state.screenshot}",
                     "detail": "high"
                 }
             ]

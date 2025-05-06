@@ -52,9 +52,9 @@ async def main():
                          run_id=run_id)
     
     try:
-        # agent = MyNavigatorAgent(ctx=ctx.new_agent_context(), 
-        #                          navigation_goal="Locate the Harvard University course catalog page listing all courses for the academic year 2024-2025.")
-        agent = MyBrainAgent(ctx=ctx.new_agent_context())
+        agent = MyNavigatorAgent(ctx=ctx.new_agent_context(), 
+                                 navigation_goal="navigation_goal: Locate the official Harvard University course catalog or equivalent authoritative source for the 2024-25 academic year course listings.")
+        # agent = MyBrainAgent(ctx=ctx.new_agent_context())
         await agent.run()
     finally:
         if browser_context:
