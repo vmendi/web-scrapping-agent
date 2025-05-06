@@ -8,7 +8,6 @@ from pydantic import BaseModel
 from openai.types.responses import ResponseFunctionToolCall
 from agents.function_schema import function_schema
 from agents import RunContextWrapper
-from my_content_extract_agent import MyContentExtractAgent
 from my_utils import MyAgentContext
 
 logger = logging.getLogger(__name__)
@@ -484,6 +483,7 @@ async def cea_extract_content(ctx: RunContextWrapper[MyAgentContext], extraction
             ```
     """
     try:
+        from my_content_extract_agent import MyContentExtractAgent
         agent = MyContentExtractAgent(ctx=ctx, extraction_goal=extraction_goal, row_schema=row_schema)
         rows, csv_path = await agent.run()
 
@@ -559,6 +559,16 @@ NAVIGATOR_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitab
     select_dropdown_option,
 ]
 
+CEA_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]] = [
+    done,
+    go_back,
+    go_to_url,
+    click_element,
+    scroll_down,
+    scroll_up,
+    scroll_to_text,
+]
+
 
 
 class MyBrainAgentTools(MyAgentTools):
@@ -569,4 +579,9 @@ class MyBrainAgentTools(MyAgentTools):
 class MyNavigatorAgentTools(MyAgentTools):
     def __init__(self, ctx: MyAgentContext):
         super().__init__(ctx, tools=NAVIGATOR_TOOLS)
+
+
+class MyContentExtractAgentTools(MyAgentTools):
+    def __init__(self, ctx: MyAgentContext):
+        super().__init__(ctx, tools=CEA_TOOLS)
 

@@ -34,9 +34,11 @@ If you need to stop early because the task cannot be completed, call `done` with
 
 - Only elements with numeric indexes in [] are interactive.
 - Elements without [] provide only context.
+- At the end of the Current State you will find a line that says [Current state ends here].
+- Only the current state will be included in the conversation. State from previous steps won't be included. If you need to memorize anything, write it to your memory.
 - A screenshot of the Current Tab will also be supplied so that you can understand the page layout.
 - In the screenshot, bounding boxes with labels on their top right corner correspond to the Interactive Element indexes provided above.
-- At the end of the Current State you will find a line that says [Current state ends here].
+
 
 # Response Rules
 1. When you need to output text in any step in addition or instead of calling a tool, this is the JSON format you must use:

@@ -1,3 +1,4 @@
+import datetime
 import json
 import logging
 import os
@@ -12,6 +13,7 @@ import json
 import logging
 from typing import Type
 from pydantic import BaseModel
+from browser_use.browser.views import BrowserState
 
 from openai import OpenAI
 from openai.types.responses import ResponseFunctionToolCall
@@ -49,7 +51,7 @@ def convert_pydantic_model_to_openai_output_schema(model: Type[BaseModel]) -> di
     }
 
 
-def convert_simplified_schema_to_openai_output_schema(row_schema: str) -> dict:
+def convert_simplified_schema_to_rows_in_openai_output_schema(row_schema: str) -> dict:
     """Convert a simplified schema (where keys are field names and values are types) into a proper OpenAI output schema.
     
     Args:
@@ -229,3 +231,64 @@ def log_step_info(logger: logging.Logger, step_number: int, max_steps: int) -> N
     step_message = f'----------------------------------- Step {step_number} of {max_steps} -----------------------------------'
     border_line = '-' * len(step_message)
     logger.info(f"\n{border_line}\n{step_message}\n{border_line}")
+
+
+
+
+@staticmethod
+def get_current_state_message(current_step: int, browser_state: BrowserState) -> list[dict]:
+    include_attributes: list[str] = [
+        'title',
+        'type',
+        'name',
+        'role',
+        'aria-label',
+        'placeholder',
+        'value',
+        'alt',
+        'aria-expanded',
+    ]
+    elements_text = browser_state.element_tree.clickable_elements_to_string(include_attributes=include_attributes)
+
+    has_content_above = (browser_state.pixels_above or 0) > 0
+    has_content_below = (browser_state.pixels_below or 0) > 0
+
+    if elements_text != '':
+        if has_content_above:
+            elements_text = f'... {browser_state.pixels_above} pixels above - scroll to see more ...\n{elements_text}'
+        else:
+            elements_text = f'[Start of page]\n{elements_text}'
+
+        if has_content_below:
+            elements_text = f'{elements_text}\n... {browser_state.pixels_below} pixels below - scroll to see more ...'
+        else:
+            elements_text = f'{elements_text}\n[End of page]'
+    else:
+        elements_text = '- Empty page -'
+
+    return [
+        {
+            "role": "user",
+            "content": f"[Current state starts here]\n"
+                        f"Current step: {current_step}\n"
+                        f"Current date and time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
+                        f"Current url: {browser_state.url}\n"
+                        f"Available tabs:\n{browser_state.tabs}\n"
+                        f"Interactive elements from top layer of the current page inside the viewport:\n{elements_text}\n"
+                        f"[Current state ends here]"
+        },
+        {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'input_text',
+                    'text': 'Here is a screenshot of the current state of the browser:'
+                },
+                {
+                    'type': 'input_image',
+                    'image_url': f"data:image/png;base64,{browser_state.screenshot}",
+                    "detail": "high"
+                }
+            ]
+        }
+    ]

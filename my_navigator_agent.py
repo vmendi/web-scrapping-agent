@@ -1,8 +1,6 @@
-import datetime
 import json
 import logging
 from pathlib import Path
-from browser_use.browser.views import BrowserState
 from openai.types.responses import ResponseFunctionToolCall
 from pydantic import BaseModel, ConfigDict
 from my_agent_tools import ActionResult, MyAgentTools, NAVIGATOR_TOOLS
@@ -59,7 +57,7 @@ class MyNavigatorAgent():
         
         # Add current state as the last message in the list before calling the model. We don't store it in the message manager 
         # on purpose: It's just transitory state. If the model wants to memorize anything, it will write it to its memory.
-        messages.extend(self.get_current_state_message(current_step=step_number, browser_state=browser_state))
+        messages.extend(my_utils.get_current_state_message(current_step=step_number, browser_state=browser_state))
 
         my_utils.MessageManager.persist_state(messages=messages, 
                                               step_number=step_number,
@@ -80,7 +78,8 @@ class MyNavigatorAgent():
             tools=self.my_agent_tools.tools_schema,
             tool_choice="auto",         # auto, required, none, or just one particular tool. If required, we dont get output text.
             parallel_tool_calls=False,
-            store=False
+            store=False,
+            temperature=0.0,
         )
         
         # ACT!
@@ -113,63 +112,3 @@ class MyNavigatorAgent():
             logger.info(f"Step {step_number}, No function tool call in the response")
 
         return action_result
-
-
-    @staticmethod
-    def get_current_state_message(current_step: int, browser_state: BrowserState) -> list[dict]:
-        include_attributes: list[str] = [
-            'title',
-            'type',
-            'name',
-            'role',
-            'aria-label',
-            'placeholder',
-            'value',
-            'alt',
-            'aria-expanded',
-        ]
-        elements_text = browser_state.element_tree.clickable_elements_to_string(include_attributes=include_attributes)
-
-        has_content_above = (browser_state.pixels_above or 0) > 0
-        has_content_below = (browser_state.pixels_below or 0) > 0
-
-        if elements_text != '':
-            if has_content_above:
-                elements_text = f'... {browser_state.pixels_above} pixels above - scroll to see more ...\n{elements_text}'
-            else:
-                elements_text = f'[Start of page]\n{elements_text}'
-
-            if has_content_below:
-                elements_text = f'{elements_text}\n... {browser_state.pixels_below} pixels below - scroll to see more ...'
-            else:
-                elements_text = f'{elements_text}\n[End of page]'
-        else:
-            elements_text = '- Empty page -'
-
-        return [
-            {
-                "role": "user",
-                "content": f"[Current state starts here]\n"
-                           f"Current step: {current_step}\n"
-                           f"Current date and time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
-                           f"The following is one-time information - if you need to remember it write it to memory:\n"
-                           f"Current url: {browser_state.url}\n"
-                           f"Available tabs:\n{browser_state.tabs}\n"
-                           f"Interactive elements from top layer of the current page inside the viewport:\n{elements_text}\n"
-                           f"[Current state ends here]"
-            },
-            {
-                'role': 'user',
-                'content': [
-                    {
-                        'type': 'input_text',
-                        'text': 'Here is a screenshot of the current state of the browser:'
-                    },
-                    {
-                        'type': 'input_image',
-                        'image_url': f"data:image/png;base64,{browser_state.screenshot}",
-                        "detail": "high"
-                    }
-                ]
-            }
-        ]

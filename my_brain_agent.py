@@ -90,6 +90,7 @@ class MyBrainAgent():
             tool_choice="auto",
             parallel_tool_calls=False,
             store=False,
+            temperature=0.0,
         )
         
         action_result = ActionResult(action_result_msg="No action executed. The model did not return a function tool call.", success=True, is_done=False)
