@@ -30,7 +30,7 @@ class MyNavigatorAgent():
 
     @staticmethod
     def get_system_message() -> str:
-        return Path("my_navigator_system_prompt_00.md").read_text()
+        return Path("my_navigator_system_prompt_01.md").read_text()
         
     @staticmethod
     def build_user_prompt(navigation_goal: str) -> str:
@@ -47,16 +47,16 @@ class MyNavigatorAgent():
         else:
             logger.info(f'Task failed after max {self.max_steps} steps')
 
-        return action_result    
+        return action_result
+    
     async def step(self, step_number: int) -> ActionResult:
         my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps)
         
-        browser_state = await self.ctx.browser_context.get_state()
         messages = self.message_manager.get_messages()
         
-        # Add current state as the last message in the list before calling the model. We don't store it in the message manager 
-        # on purpose: It's just transitory state. If the model wants to memorize anything, it will write it to its memory.
-        messages.extend(my_utils.get_current_browser_state_message(current_step=step_number, browser_state=browser_state))
+        browser_state_message = await my_utils.get_current_browser_state_message(current_step=step_number, 
+                                                                                 browser_context=self.ctx.browser_context)
+        messages.extend(browser_state_message)
 
         my_utils.MessageManager.persist_state(messages=messages, 
                                               step_number=step_number,
@@ -71,8 +71,9 @@ class MyNavigatorAgent():
             # model="o4-mini",
             # reasoning={"effort": "medium"},
             input=messages,
-            text=self.output_schema,
+            # text=self.output_schema,
             tools=self.my_agent_tools.tools_schema,
+            tool_choice="auto",
             parallel_tool_calls=False,
             store=False,
             temperature=0.0     # Not supported for o3 and o4-mini
@@ -80,9 +81,11 @@ class MyNavigatorAgent():
         await self.ctx.browser_context.remove_highlights()
 
         if response.output_text:
-            navigator_agent_output = json.loads(response.output_text)
-            logger.info(f"Step {step_number}, Response Message:\n{json.dumps(navigator_agent_output, indent=2)}")
-            self.message_manager.add_ai_message(content=json.dumps(navigator_agent_output, indent=2))            
+            # navigator_agent_output = json.loads(response.output_text)
+            # logger.info(f"Step {step_number}, Response Message:\n{json.dumps(navigator_agent_output, indent=2)}")
+            # self.message_manager.add_ai_message(content=json.dumps(navigator_agent_output, indent=2))            
+            logger.info(f"Step {step_number}, Response Message:\n{response.output_text}")
+            self.message_manager.add_ai_message(content=response.output_text)
             action_result = ActionResult(action_result_msg="No action executed. The model output is text.", 
                                          success=True, 
                                          is_done=False)

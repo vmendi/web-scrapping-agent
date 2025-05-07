@@ -53,7 +53,7 @@ async def main():
     
     try:
         agent = MyNavigatorAgent(ctx=ctx.new_agent_context(), 
-                                 navigation_goal="navigation_goal: Locate the official Harvard University course catalog or equivalent authoritative source for the 2024-25 academic year course listings.")
+                                 navigation_goal="Locate the official Harvard University course catalog for the 2024-25 academic year course listings. It has to include the course listings for all departments of all schools.")
         # agent = MyBrainAgent(ctx=ctx.new_agent_context())
         await agent.run()
     finally:
