@@ -206,16 +206,20 @@ class MessageManager:
             if 'role' in message:                
                 role = message.get('role', 'unknown')
                 content = message.get('content', 'empty')
+
                 if isinstance(content, list):
+                    content_str = f"\n---------------------- role:{role} ----------------------\n"
                     for item in content:
                         if not isinstance(item, dict):
-                            content = f"Unknown content type: {item}"
+                            content_str += f"Unknown content type: {item}" + "\n"
                             continue
                         if item.get('type') == 'input_text':
-                            content = item.get('content', 'unknown')
+                            content_str += item.get('content', 'unknown') + "\n"
                         elif item.get('type') == 'input_image':
-                            content = f"Image URL: Redacted"
-                formatted_messages.append(f"\n---------------------- role:{role} ----------------------\n{content}")
+                            content_str += f"Image URL: Redacted" + "\n"
+                    formatted_messages.append(f"{content_str}")
+                else:
+                    formatted_messages.append(f"\n---------------------- role:{role} ----------------------\n{content}")
             elif 'type' in message:
                 type = message.get('type', 'unknown')
                 if type == 'function_call':
@@ -248,8 +252,9 @@ def log_step_info(logger: logging.Logger, step_number: int, max_steps: int) -> N
 
 
 
-@staticmethod
-def get_current_browser_state_message(current_step: int, browser_state: BrowserState) -> list[dict]:
+async def get_current_browser_state_message(current_step: int, browser_context: BrowserContext) -> list[dict]:
+    browser_state = await browser_context.get_state()
+
     include_attributes: list[str] = [
         'title',
         'type',
@@ -279,6 +284,8 @@ def get_current_browser_state_message(current_step: int, browser_state: BrowserS
     else:
         elements_text = '- Empty page -'
 
+    screenshot_base64 = await browser_context.take_screenshot(full_page=True)
+
     return [
         {
             "role": "user",
@@ -295,7 +302,7 @@ def get_current_browser_state_message(current_step: int, browser_state: BrowserS
                 },
                 {
                     "type": "input_image",
-                    "image_url": f"data:image/png;base64,{browser_state.screenshot}",
+                    "image_url": f"data:image/png;base64,{screenshot_base64}",
                     "detail": "high"
                 }
             ]
