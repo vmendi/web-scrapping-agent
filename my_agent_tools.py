@@ -437,28 +437,31 @@ async def cea_extract_content(ctx: RunContextWrapper[MyAgentContext], extraction
             }
             ```
     """
-    try:
-        from my_content_extract_agent import MyContentExtractAgent
-        agent = MyContentExtractAgent(ctx=ctx.new_agent_context(), 
-                                      extraction_goal=extraction_goal, 
-                                      row_schema=row_schema)
-        rows, csv_path = await agent.run()
+    from my_content_extract_agent import MyContentExtractAgent
+    agent = MyContentExtractAgent(ctx=ctx.new_agent_context(), 
+                                    extraction_goal=extraction_goal, 
+                                    row_schema=row_schema)
+    rows, csv_path = await agent.run()
 
+    if csv_path:
         result_payload = {
             "status": "success",
             "status_message": f"Successfully extracted and persisted {len(rows)} items to {csv_path}.",
             "persisted_count": len(rows),
+            "csv_path": csv_path,
+            "rows": rows,
         }
         return ActionResult(action_result_msg=json.dumps(result_payload), success=True)
-    
-    except Exception as e:
+    else:
         result_payload = {
             "status": "failure",
-            "status_message": str(e),
+            "status_message": "Failed to extract content",
             "persisted_count": 0,
+            "csv_path": None,
+            "rows": [],            
         }
         return ActionResult(action_result_msg=json.dumps(result_payload), success=False)
-
+    
 
 class PlanStep(BaseModel):
     step_id: int
