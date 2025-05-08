@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import json
 import logging
@@ -301,7 +302,13 @@ async def get_current_browser_state_message(current_step: int, browser_context: 
     else:
         elements_text = '- Empty page -'
 
-    screenshot_base64 = await browser_context.take_screenshot(full_page=True)
+    screenshot_base64 = None
+    while screenshot_base64 is None:
+        try:
+            screenshot_base64 = await browser_context.take_screenshot(full_page=True)
+        except Exception as e:
+            logger.error(f"Failed to take screenshot: {e}...\nRetrying...")
+            await asyncio.sleep(1)
 
     return [
         {
