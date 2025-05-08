@@ -2,7 +2,7 @@ import datetime
 import json
 import logging
 import os
-from typing import ClassVar, Type
+from typing import Type
 from pydantic import BaseModel
 from agents import AgentOutputSchema
 from openai.types.responses import ResponseFunctionToolCall
@@ -13,7 +13,6 @@ import json
 import logging
 from typing import Type
 from pydantic import BaseModel
-from browser_use.browser.views import BrowserState
 
 from openai import OpenAI
 from openai.types.responses import ResponseFunctionToolCall
@@ -127,7 +126,6 @@ class MessageManager:
         })
 
     def add_ai_function_tool_call_message(self, function_tool_call: ResponseFunctionToolCall):
-        """Adds an a message that contains a function tool call that the model wants to execute."""
         self._messages.append({
             "type": "function_call",
             "call_id": function_tool_call.call_id,
@@ -136,7 +134,6 @@ class MessageManager:
         })
         
     def add_tool_result_message(self, result_message: str, tool_call_id: str):
-        """Adds the result message of a tool call."""
         self._messages.append({
             "type": "function_call_output",
             "call_id": tool_call_id,
@@ -244,11 +241,11 @@ class MessageManager:
         return formatted_messages_str
 
 
+
 def log_step_info(logger: logging.Logger, step_number: int, max_steps: int) -> None:
     step_message = f'----------------------------------- Step {step_number} of {max_steps} -----------------------------------'
     border_line = '-' * len(step_message)
     logger.info(f"\n{border_line}\n{step_message}\n{border_line}")
-
 
 
 
@@ -268,10 +265,12 @@ async def get_current_browser_state_message(current_step: int, browser_context: 
     ]
     elements_text = browser_state.element_tree.clickable_elements_to_string(include_attributes=include_attributes)
 
-    # has_content_above = (browser_state.pixels_above or 0) > 0
-    # has_content_below = (browser_state.pixels_below or 0) > 0
-    has_content_above = False
-    has_content_below = False
+    if browser_context.config.viewport_expansion == -1:
+        has_content_above = False
+        has_content_below = False
+    else:
+        has_content_above = (browser_state.pixels_above or 0) > 0
+        has_content_below = (browser_state.pixels_below or 0) > 0
 
     if elements_text != '':
         if has_content_above:

@@ -9,21 +9,12 @@ import my_utils
 logger = logging.getLogger(__name__)
 
 
-class NavigatorAgentOutputModel(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-     
-    evaluation_previous_goal: str
-    memory: str
-    next_goal: str
-
-
 class MyNavigatorAgent():
     def __init__(self, ctx: my_utils.MyAgentContext, navigation_goal: str):
         self.max_steps = 100
         self.ctx = ctx
         self.my_agent_tools = MyAgentTools(ctx=self.ctx, tools=NAVIGATOR_TOOLS)        
-        self.output_schema = my_utils.convert_pydantic_model_to_openai_output_schema(NavigatorAgentOutputModel)
-        
+               
         self.message_manager = my_utils.MessageManager(system_message_content=self.get_system_message())
         self.message_manager.add_user_message(content=self.build_user_prompt(navigation_goal=navigation_goal))
         
@@ -71,7 +62,6 @@ class MyNavigatorAgent():
             # model="o4-mini",
             # reasoning={"effort": "medium"},
             input=messages,
-            # text=self.output_schema,
             tools=self.my_agent_tools.tools_schema,
             tool_choice="auto",
             parallel_tool_calls=False,
@@ -81,9 +71,6 @@ class MyNavigatorAgent():
         await self.ctx.browser_context.remove_highlights()
 
         if response.output_text:
-            # navigator_agent_output = json.loads(response.output_text)
-            # logger.info(f"Step {step_number}, Response Message:\n{json.dumps(navigator_agent_output, indent=2)}")
-            # self.message_manager.add_ai_message(content=json.dumps(navigator_agent_output, indent=2))            
             logger.info(f"Step {step_number}, Response Message:\n{response.output_text}")
             self.message_manager.add_ai_message(content=response.output_text)
             action_result = ActionResult(action_result_msg="No action executed. The model output is text.", 
@@ -94,9 +81,6 @@ class MyNavigatorAgent():
             if not function_tool_call:
                 raise Exception(f"Step {step_number}, No function tool call or response output text")
             
-            #
-            # TODO: Experiment with compacting this output into a single message with the summary of the function tool call
-            #
             self.message_manager.add_ai_function_tool_call_message(function_tool_call=function_tool_call)
             logger.info(f"Step {step_number}, Function Tool Call:\n{function_tool_call.to_json()}")
             
