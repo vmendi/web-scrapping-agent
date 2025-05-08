@@ -214,7 +214,7 @@ class MessageManager:
                             content_str += f"Unknown content type: {item}" + "\n"
                             continue
                         if item.get('type') == 'input_text':
-                            content_str += item.get('content', 'unknown') + "\n"
+                            content_str += item.get('text', 'unknown') + "\n"
                         elif item.get('type') == 'input_image':
                             content_str += f"Image URL: Redacted" + "\n"
                     formatted_messages.append(f"{content_str}")
@@ -268,8 +268,10 @@ async def get_current_browser_state_message(current_step: int, browser_context: 
     ]
     elements_text = browser_state.element_tree.clickable_elements_to_string(include_attributes=include_attributes)
 
-    has_content_above = (browser_state.pixels_above or 0) > 0
-    has_content_below = (browser_state.pixels_below or 0) > 0
+    # has_content_above = (browser_state.pixels_above or 0) > 0
+    # has_content_below = (browser_state.pixels_below or 0) > 0
+    has_content_above = False
+    has_content_below = False
 
     if elements_text != '':
         if has_content_above:
@@ -292,13 +294,13 @@ async def get_current_browser_state_message(current_step: int, browser_context: 
             "content": [
                 {
                     "type": "input_text",
-                    "text": f"[Current state starts here]\n"
+                    "text": f"[Current browser state starts here]\n"
                             f"Current step: {current_step}\n"
                             f"Current date and time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}\n"
                             f"Current url: {browser_state.url}\n"
                             f"Available tabs:\n{browser_state.tabs}\n"
                             f"Interactive elements from top layer of the current page inside the viewport:\n{elements_text}\n"
-                            f"[Current state ends here]"
+                            f"[Current browser state ends here]"
                 },
                 {
                     "type": "input_image",

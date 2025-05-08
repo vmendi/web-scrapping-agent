@@ -32,9 +32,6 @@ async def done(ctx: RunContextWrapper[MyAgentContext], success: bool, message_to
     Args:
         success: bool - Whether the task is finished successfully or not.
         message_to_user: str - A message to return to the user in either case of success or failure.
-        
-    Returns:
-        ActionResult - The result of the action
     """	
     return ActionResult(action_result_msg=message_to_user, 
                         success=success, 
@@ -46,9 +43,6 @@ async def search_google(ctx: RunContextWrapper[MyAgentContext], query: str) -> A
     
     Args:
         query: str - The search query to use. Should be concrete and not vague or super long, like how humans search in Google. Focus on the single most important items.
-        
-    Returns:
-        ActionResult - The result of the action with the search confirmation message
     """
     page = await ctx.browser_context.get_current_page()
     await page.goto(f'https://www.google.com/search?q={query}&udm=14')
@@ -59,9 +53,6 @@ async def search_google(ctx: RunContextWrapper[MyAgentContext], query: str) -> A
 
 async def go_back(ctx: RunContextWrapper[MyAgentContext]) -> ActionResult:
     """Navigate back to the previous page in the browser history of the current tab.
-            
-    Returns:
-        ActionResult - The result of the action with the navigation confirmation message
     """
     await ctx.browser_context.go_back()
     return ActionResult(action_result_msg='Navigated back', 
@@ -73,9 +64,6 @@ async def go_to_url(ctx: RunContextWrapper[MyAgentContext], url: str) -> ActionR
     
     Args:
         url: str - The URL to navigate to.
-
-    Returns:
-        ActionResult - The result of the action with the navigation confirmation message
     """
     page = await ctx.browser_context.get_current_page()
     await page.goto(url)
@@ -90,9 +78,6 @@ async def input_text(ctx: RunContextWrapper[MyAgentContext], index: int, text: s
     Args:
         index: int - The index of the element to input text into.
         text: str - The text to input.
-        
-    Returns:
-        ActionResult - The result of the action with the input confirmation message
     """
     if index not in await ctx.browser_context.get_selector_map():
         raise Exception(f'Element index {index} does not exist - retry or use alternative actions')
@@ -109,9 +94,6 @@ async def click_element(ctx: RunContextWrapper[MyAgentContext], index: int) -> A
     
     Args:
         index: int - The index of the element to click.
-        
-    Returns:
-        ActionResult - The result of the action with the click confirmation message or download path
     """
     session = await ctx.browser_context.get_session()
 
@@ -152,9 +134,6 @@ async def open_tab(ctx: RunContextWrapper[MyAgentContext], url: str) -> ActionRe
     
     Args:
         url: str - The URL to open in the new tab.
-        
-    Returns:
-        ActionResult - The result of the action with the tab opening confirmation message
     """
     await ctx.browser_context.create_new_tab(url)
 
@@ -167,9 +146,6 @@ async def switch_tab(ctx: RunContextWrapper[MyAgentContext], page_id: int) -> Ac
     
     Args:
         page_id: int - The ID of the tab to switch to.
-        
-    Returns:
-        ActionResult - The result of the action with the tab switching confirmation message
     """
     await ctx.browser_context.switch_to_tab(page_id)
     # Wait for tab to be ready
@@ -185,9 +161,6 @@ async def scroll_down(ctx: RunContextWrapper[MyAgentContext], amount: int) -> Ac
     
     Args:
         amount: int - The number of pixels to scroll down. If 0, scrolls down one page height.
-        
-    Returns:
-        ActionResult - The result of the action with the scroll confirmation message
     """
     page = await ctx.browser_context.get_current_page()
     if amount != 0:
@@ -205,9 +178,6 @@ async def scroll_up(ctx: RunContextWrapper[MyAgentContext], amount: int) -> Acti
     
     Args:
         amount: int - The number of pixels to scroll up. If 0, scrolls up one page height.
-        
-    Returns:
-        ActionResult - The result of the action with the scroll confirmation message
     """
     page = await ctx.browser_context.get_current_page()
     if amount != 0:
@@ -225,9 +195,6 @@ async def send_keys(ctx: RunContextWrapper[MyAgentContext], keys: str) -> Action
     
     Args:
         keys: str - The keys to send. Can be special keys or keyboard shortcuts.
-        
-    Returns:
-        ActionResult - The result of the action with the key press confirmation message
     """
     page = await ctx.browser_context.get_current_page()
     try:
@@ -252,9 +219,6 @@ async def scroll_to_text(ctx: RunContextWrapper[MyAgentContext], text: str) -> A
     
     Args:
         text: str - The text to scroll to.
-        
-    Returns:
-        ActionResult - The result of the action with the scroll confirmation message
     """
     page = await ctx.browser_context.get_current_page()
     try:
@@ -290,9 +254,6 @@ async def get_dropdown_options(ctx: RunContextWrapper[MyAgentContext], index: in
     
     Args:
         index: int - The index of the dropdown element.
-        
-    Returns:
-        ActionResult - The result of the action with the dropdown options
     """
     page = await ctx.browser_context.get_current_page()
     selector_map = await ctx.browser_context.get_selector_map()
@@ -364,9 +325,6 @@ async def select_dropdown_option(ctx: RunContextWrapper[MyAgentContext], index: 
     Args:
         index: int - The index of the dropdown element.
         text: str - The text of the option to select.
-        
-    Returns:
-        ActionResult - The result of the action with the selection confirmation message
     """
     page = await ctx.browser_context.get_current_page()
     selector_map = await ctx.browser_context.get_selector_map()
@@ -456,10 +414,6 @@ async def wna_navigate_and_find(ctx: RunContextWrapper[MyAgentContext], navigati
 
     Args:
         navigation_goal: str - A concise, natural-language description of what the navigator should accomplish.
-            It should focus on *where* to end up or *what* to locate, rather than prescribing individual clicks.
-            Examples:
-                - "Open https://news.ycombinator.com and scroll to the first post that mentions GPT".
-                - "Go to finance.yahoo.com and bring me to the detailed quote page for NVDA.".
     """
     from my_navigator_agent import MyNavigatorAgent  # local import to avoid circular dependency
     
@@ -572,14 +526,14 @@ NAVIGATOR_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitab
     search_google,
     go_back,
     go_to_url,
-    input_text,
+    # input_text,
     click_element,
     open_tab,
     switch_tab,
-    scroll_down,
-    scroll_up,
-    send_keys,
-    scroll_to_text,
+    # scroll_down,
+    # scroll_up,
+    # send_keys,
+    # scroll_to_text,
     get_dropdown_options,
     select_dropdown_option,
 ]

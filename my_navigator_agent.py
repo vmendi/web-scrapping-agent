@@ -94,6 +94,9 @@ class MyNavigatorAgent():
             if not function_tool_call:
                 raise Exception(f"Step {step_number}, No function tool call or response output text")
             
+            #
+            # TODO: Experiment with compacting this output into a single message with the summary of the function tool call
+            #
             self.message_manager.add_ai_function_tool_call_message(function_tool_call=function_tool_call)
             logger.info(f"Step {step_number}, Function Tool Call:\n{function_tool_call.to_json()}")
             
