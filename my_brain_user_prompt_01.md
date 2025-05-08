@@ -1,4 +1,4 @@
-Your task is to extract the courses available to students at all of Harvard University for the academic year of 2024-25. Take into account that Harvard University is comprised of many schools. Make sure to include all schools that offer courses.
+Your task is to extract the courses available to students at all of Harvard University for the academic year of 2024-25. Try to find a single page with all the courses for all schools.
 
 **Required Information Fields (for final output)**:
 
