@@ -111,38 +111,54 @@ class MessageManager:
             "role": "system",
             "content": system_message_content
         }]
+        self._ephemeral_messages: dict[int, bool] = {0: False}  # Track ephemeral status by message index
         
-    def add_user_message(self, content: str):
-        """Adds a user (human) message."""
+    def add_user_message(self, content: str, ephemeral: bool):
         self._messages.append({
             "role": "user",
             "content": content
         })
+        self._ephemeral_messages[len(self._messages) - 1] = ephemeral
 
-    def add_ai_message(self, content: str):
+    def add_ai_message(self, content: str, ephemeral: bool):
         self._messages.append({
             "role": "assistant",
             "content": content,
         })
+        self._ephemeral_messages[len(self._messages) - 1] = ephemeral
 
-    def add_ai_function_tool_call_message(self, function_tool_call: ResponseFunctionToolCall):
+    def add_ai_function_tool_call_message(self, function_tool_call: ResponseFunctionToolCall, ephemeral: bool):
         self._messages.append({
             "type": "function_call",
             "call_id": function_tool_call.call_id,
             "name": function_tool_call.name,
             "arguments": function_tool_call.arguments
         })
+        self._ephemeral_messages[len(self._messages) - 1] = ephemeral
         
-    def add_tool_result_message(self, result_message: str, tool_call_id: str):
+    def add_tool_result_message(self, result_message: str, tool_call_id: str, ephemeral: bool):
         self._messages.append({
             "type": "function_call_output",
             "call_id": tool_call_id,
             "output": result_message
         })
+        self._ephemeral_messages[len(self._messages) - 1] = ephemeral
 
     def get_messages(self) -> list[dict]:
         return copy.deepcopy(self._messages)
-    
+
+    def remove_ephemeral_messages(self):
+        new_messages = []
+        new_ephemeral = {}
+        
+        for idx, msg in enumerate(self._messages):
+            if not self._ephemeral_messages.get(idx, False):
+                new_messages.append(msg)
+                new_ephemeral[len(new_messages) - 1] = False
+        
+        self._messages = new_messages
+        self._ephemeral_messages = new_ephemeral
+
     @staticmethod
     def persist_state(messages: list[dict], step_number: int, save_dir: str):
         os.makedirs(save_dir, exist_ok=True)

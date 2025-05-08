@@ -29,7 +29,8 @@ class MyContentExtractAgent:
                      f"Extraction goal: {self.extraction_goal}\n\n"
                      "The caller provided the JSON schema of a *single row* that must be adhered to:\n"
                      f"```json\n{json.dumps(row_schema, indent=2)}\n```\n"
-                     "Produce a JSON array where each element respects that schema.")
+                     "Produce a JSON array where each element respects that schema."),
+            ephemeral=False
         )
 
         self.my_agent_tools = MyContentExtractAgentTools(ctx=self.ctx)
@@ -122,12 +123,14 @@ class MyContentExtractAgent:
                 raise RuntimeError('No function tool call detected.')
 
             logger.info(f'Step {step_number} - function tool call: {function_tool_call.to_json()}')
-            self.message_manager.add_ai_function_tool_call_message(function_tool_call=function_tool_call)
+            self.message_manager.add_ai_function_tool_call_message(function_tool_call=function_tool_call, 
+                                                                   ephemeral=False)
 
             action_result = await self.my_agent_tools.execute_tool(function_tool_call=function_tool_call)
             logger.info(f'Step {step_number} - tool execution result: {action_result.action_result_msg}')
             self.message_manager.add_tool_result_message(result_message=action_result.action_result_msg,
-                                                        tool_call_id=function_tool_call.call_id)
+                                                         tool_call_id=function_tool_call.call_id,
+                                                         ephemeral=False)
             
 
         return action_result
