@@ -54,7 +54,7 @@ class MyBrainAgent():
         return Path("my_brain_user_prompt_01.md").read_text()
             
     def get_system_prompt(self) -> str:
-        return Path("my_brain_system_prompt_01.md").read_text()
+        return Path("my_brain_system_prompt_02.md").read_text()
 
 
     async def run(self) -> ActionResult:
@@ -72,14 +72,10 @@ class MyBrainAgent():
     
 
     async def step(self, step_number: int) -> ActionResult:
-        my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps)
+        my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps, agent_name="Brain Agent")
                 
         self.message_manager.add_ai_message(content=f"Current step: {step_number}")
         messages = self.message_manager.get_messages()
-        messages.append({
-            "role": "assistant",
-            "content": f"Current plan: {json.dumps(self.ctx.memory.get('plan', {}))}"
-        })
         my_utils.MessageManager.persist_state(messages=messages, 
                                               step_number=step_number,
                                               save_dir=f"{self.ctx.save_dir}/brain_agent")

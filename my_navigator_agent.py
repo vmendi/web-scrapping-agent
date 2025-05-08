@@ -41,7 +41,7 @@ class MyNavigatorAgent():
         return action_result
     
     async def step(self, step_number: int) -> ActionResult:
-        my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps)
+        my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps, agent_name="Navigator Agent")
         
         messages = self.message_manager.get_messages()
         

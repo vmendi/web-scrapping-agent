@@ -518,7 +518,7 @@ BRAIN_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[A
     done,
     wna_navigate_and_find,
     cea_extract_content,
-    persist_plan,
+    # persist_plan,
 ]
 
 NAVIGATOR_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]] = [
@@ -526,13 +526,13 @@ NAVIGATOR_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitab
     search_google,
     go_back,
     go_to_url,
-    # input_text,
     click_element,
+    # input_text,
+    # send_keys,    
     open_tab,
     switch_tab,
     # scroll_down,
     # scroll_up,
-    # send_keys,
     # scroll_to_text,
     get_dropdown_options,
     select_dropdown_option,
@@ -543,11 +543,11 @@ CEA_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[Act
     go_back,
     go_to_url,
     click_element,
-    scroll_down,
-    scroll_up,
-    scroll_to_text,
+    input_text,
+    send_keys,
+    get_dropdown_options,
+    select_dropdown_option,
 ]
-
 
 
 class MyBrainAgentTools(MyAgentTools):

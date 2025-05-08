@@ -242,8 +242,8 @@ class MessageManager:
 
 
 
-def log_step_info(logger: logging.Logger, step_number: int, max_steps: int) -> None:
-    step_message = f'----------------------------------- Step {step_number} of {max_steps} -----------------------------------'
+def log_step_info(logger: logging.Logger, step_number: int, max_steps: int, agent_name: str) -> None:
+    step_message = f'----------------------------------- Step {step_number} of {max_steps} @ {agent_name} -----------------------------------'
     border_line = '-' * len(step_message)
     logger.info(f"\n{border_line}\n{step_message}\n{border_line}")
 
