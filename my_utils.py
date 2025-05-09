@@ -258,6 +258,57 @@ class MessageManager:
         return formatted_messages_str
 
 
+def recursively_parse_json_strings(item):
+    """
+    Recursively traverses a Python object (dict, list, or other)
+    and attempts to parse any string values as JSON.
+    If a string is valid JSON, it's replaced by the parsed object.
+    """
+    if isinstance(item, dict):
+        new_dict = {}
+        for k, v in item.items():
+            if isinstance(v, str):
+                try:
+                    parsed_v = json.loads(v)
+                    # Recurse on the parsed value
+                    new_dict[k] = recursively_parse_json_strings(parsed_v)
+                except json.JSONDecodeError:
+                    # If it's not valid JSON, keep the original string
+                    new_dict[k] = v
+            else:
+                # If not a string, recurse directly
+                new_dict[k] = recursively_parse_json_strings(v)
+        return new_dict
+    elif isinstance(item, list):
+        new_list = []
+        for i in item:
+            if isinstance(i, str):
+                try:
+                    parsed_i = json.loads(i)
+                    # Recurse on the parsed value
+                    new_list.append(recursively_parse_json_strings(parsed_i))
+                except json.JSONDecodeError:
+                    # If it's not valid JSON, keep the original string
+                    new_list.append(i)
+            else:
+                # If not a string, recurse directly
+                new_list.append(recursively_parse_json_strings(i))
+        return new_list
+    else:
+        # Base case: item is not a dict or list, or it's a string that couldn't be parsed
+        return item
+
+
+def format_json_pretty(json_str: str) -> str:
+    """
+    Converts a JSON object to a pretty-formatted JSON string,
+    recursively parsing any nested JSON strings within it.
+    """
+    initial_parsed = json.loads(json_str)
+    deep_parsed = recursively_parse_json_strings(initial_parsed)
+    pretty_json_str = json.dumps(deep_parsed, indent=2)
+    return pretty_json_str
+
 
 def log_step_info(logger: logging.Logger, step_number: int, max_steps: int, agent_name: str) -> None:
     step_message = f'----------------------------------- Step {step_number} of {max_steps} @ {agent_name} -----------------------------------'
@@ -267,7 +318,17 @@ def log_step_info(logger: logging.Logger, step_number: int, max_steps: int, agen
 
 
 async def get_current_browser_state_message(current_step: int, browser_context: BrowserContext) -> list[dict]:
-    browser_state = await browser_context.get_state()
+    screenshot_base64 = None
+    while screenshot_base64 is None:
+        try:
+            browser_state = await browser_context.get_state()
+            # screenshot_base64 = await browser_context.take_screenshot(full_page=True)
+            screenshot_base64 = browser_state.screenshot
+        except Exception as e:
+            logger.error(f"Failed to take screenshot: {e}...\nRetrying...")
+            page = await browser_context.get_current_page()
+            await page.reload()
+            await asyncio.sleep(3)
 
     include_attributes: list[str] = [
         'title',
@@ -301,14 +362,6 @@ async def get_current_browser_state_message(current_step: int, browser_context: 
             elements_text = f'{elements_text}\n[End of page]'
     else:
         elements_text = '- Empty page -'
-
-    screenshot_base64 = None
-    while screenshot_base64 is None:
-        try:
-            screenshot_base64 = await browser_context.take_screenshot(full_page=True)
-        except Exception as e:
-            logger.error(f"Failed to take screenshot: {e}...\nRetrying...")
-            await asyncio.sleep(1)
 
     return [
         {

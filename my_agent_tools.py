@@ -3,12 +3,12 @@ import json
 import logging
 from typing import Any, Awaitable, Callable, List, Optional
 from functools import cached_property
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from openai.types.responses import ResponseFunctionToolCall
+from openai.types.responses import ResponseFunctionToolCall, Response
 from agents.function_schema import function_schema
 from agents import RunContextWrapper
-from my_utils import MyAgentContext
+from my_utils import MyAgentContext, format_json_pretty
 
 logger = logging.getLogger(__name__)
 
@@ -409,6 +409,25 @@ async def select_dropdown_option(ctx: RunContextWrapper[MyAgentContext], index: 
                             success=False)
 
 
+class VisitedUrl(BaseModel):
+    url: str = Field(..., description="The URL that was visited.")
+    relevant: bool = Field(..., description="Whether the URL was relevant to the navigation goal or not.")
+    reason: str = Field(..., description="Why the URL was relevant or not to the navigation goal.")
+
+class NavigationDoneResult(BaseModel):
+    """The result of the navigation_done task."""
+    success: bool = Field(..., description="Whether the navigation was successful or not.")
+    status_message: str = Field(..., description="A message to return to the user in either case of success or failure.")
+    visited_urls: list[VisitedUrl] = Field(..., description="A list of URLs that were visited, whether they were relevant to the navigation goal or not, and why.")
+
+async def navigation_done(ctx: RunContextWrapper[MyAgentContext], navigation_done_result: NavigationDoneResult) -> ActionResult:
+    """The navigator has finished the task with success or failure, for whatever the reason.
+    """	
+    return ActionResult(action_result_msg=navigation_done_result.model_dump_json(), 
+                        success=navigation_done_result.success, 
+                        is_done=True)
+
+
 async def wna_navigate_and_find(ctx: RunContextWrapper[MyAgentContext], navigation_goal: str) -> ActionResult:
     """Invoke the Web Navigation Agent (WNA) to autonomously browse the web until the navigation goal is satisfied.
 
@@ -515,6 +534,23 @@ class MyAgentTools:
         tool_args = json.loads(function_tool_call.arguments)
         return await tool(self.ctx, **tool_args)
 
+    async def handle_tool_calls(self, current_step: int, response: Response, message_manager: Any) -> ActionResult:
+        tool_call_generator = (item for item in response.output if isinstance(item, ResponseFunctionToolCall))
+        function_tool_call: ResponseFunctionToolCall = next(tool_call_generator, None)
+
+        if not function_tool_call:
+            raise RuntimeError('No function tool call detected')
+            
+        logger.info(f"Step {current_step}, Function Tool Call:\n{format_json_pretty(function_tool_call.to_json())}")
+        message_manager.add_ai_function_tool_call_message(function_tool_call=function_tool_call,
+                                                               ephemeral=False)
+
+        action_result = await self.execute_tool(function_tool_call=function_tool_call)
+        logger.info(f'Step {current_step}, Function Tool Call Result:\n{format_json_pretty(action_result.model_dump_json())}')
+        message_manager.add_tool_result_message(result_message=action_result.action_result_msg,
+                                                     tool_call_id=function_tool_call.call_id,
+                                                     ephemeral=False)
+        return action_result
 
 
 BRAIN_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]] = [

@@ -96,19 +96,8 @@ class MyBrainAgent():
             self.message_manager.add_ai_message(content=response.output_text, ephemeral=False)
             action_result = ActionResult(action_result_msg="No action executed. The model output is text.", success=True, is_done=False)
         else:
-            function_tool_call: ResponseFunctionToolCall = next((item for item in response.output if isinstance(item, ResponseFunctionToolCall)), None)
-            if not function_tool_call:
-                raise Exception(f"Step {step_number}, No function tool call or response message")
-            
-            logger.info(f"Step {step_number}, Function Tool Call:\n{function_tool_call.to_json()}")
-            self.message_manager.add_ai_function_tool_call_message(function_tool_call=function_tool_call, 
-                                                                   ephemeral=False)
-            
-            action_result = await self.my_agent_tools.execute_tool(function_tool_call=function_tool_call)
-            logger.info(f'Step {step_number}, Function Tool Call Result: {action_result.action_result_msg}')
-
-            self.message_manager.add_tool_result_message(result_message=action_result.action_result_msg, 
-                                                         tool_call_id=function_tool_call.call_id, 
-                                                         ephemeral=False)
+            action_result = await self.my_agent_tools.handle_tool_calls(current_step=step_number, 
+                                                                        response=response,                 
+                                                                        message_manager=self.message_manager)
                 
         return action_result

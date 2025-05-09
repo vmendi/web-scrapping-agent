@@ -56,10 +56,10 @@ async def main():
         agent = MyBrainAgent(ctx=ctx.new_agent_context())
 
         # agent = MyNavigatorAgent(ctx=ctx.new_agent_context(), 
-        #                          navigation_goal="Locate the official Harvard University course catalog for the 2024-25 academic year course listings. It has to include the course listings for all departments of all schools.")
+        #                          navigation_goal="Locate a page that lists all courses offered by all schools at Harvard University.")
         
         # agent = MyContentExtractAgent(ctx=ctx.new_agent_context(),
-        #                               extraction_goal="Extract the names of all schools, colleges, or academic divisions at Harvard University that offer courses from the official list at the provided URL.",
+        #                               extraction_goal="Extract all courses offered by all schools at Harvard University.",
         #                               row_schema="""{"school_name": "string"}""")
         await agent.run()
     finally:
