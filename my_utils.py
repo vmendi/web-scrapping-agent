@@ -295,7 +295,6 @@ def recursively_parse_json_strings(item):
                 new_list.append(recursively_parse_json_strings(i))
         return new_list
     else:
-        # Base case: item is not a dict or list, or it's a string that couldn't be parsed
         return item
 
 

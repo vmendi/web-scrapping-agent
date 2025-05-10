@@ -33,11 +33,15 @@ class MyNavigatorAgent():
         
         for step_number in range(self.max_steps):
             action_result = await self.step(step_number=step_number)
-            if action_result.is_done:
+            
+            if action_result.action_name == "done":
                 logger.info(f'Task completed at step {step_number} with success: {action_result.success}')
                 break
         else:
-            logger.info(f'Task failed after max {self.max_steps} steps')
+            logger.error(f'Task failed after max {self.max_steps} steps')
+            action_result = ActionResult(action_name="done",
+                                         action_result_msg=f"Task failed after max {self.max_steps} steps",
+                                         success=False)
 
         return action_result
     
@@ -72,9 +76,11 @@ class MyNavigatorAgent():
         if response.output_text:
             logger.info(f"Step {step_number}, Response Message:\n{response.output_text}")
             self.message_manager.add_ai_message(content=response.output_text, ephemeral=False)
-            action_result = ActionResult(action_result_msg="No action executed. The model output is text.", success=True, is_done=False)
+            action_result = ActionResult(action_name="output_text",
+                                         action_result_msg=f"{response.output_text}",
+                                         success=True)
         else:
-            action_result = await self.my_agent_tools.handle_tool_calls(current_step=step_number, 
+            action_result = await self.my_agent_tools.handle_tool_call(current_step=step_number, 
                                                                         response=response,                 
                                                                         message_manager=self.message_manager)
     

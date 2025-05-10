@@ -1,18 +1,5 @@
-import base64
-import datetime
-import json
-import os
 import logging
 from pathlib import Path
-from typing import Generic, Optional, Type, TypeVar
-from agents import AgentOutputSchema
-from browser_use import Browser, BrowserConfig, BrowserContextConfig
-from browser_use.browser.context import BrowserContext
-from browser_use.browser.views import BrowserState
-import asyncio
-from openai import OpenAI
-from openai.types.responses import ResponseFunctionToolCall
-from pydantic import BaseModel, ConfigDict, Field, create_model
 
 import my_utils
 from my_agent_tools import MyBrainAgentTools, ActionResult
@@ -20,31 +7,10 @@ from my_agent_tools import MyBrainAgentTools, ActionResult
 logger = logging.getLogger(__name__)
 
 
-# class PlannerAgentOutputModel(BaseModel):
-#     class OutputField(BaseModel):
-#         name: str = Field(description="The snake_case name of the output field")
-#         type: str = Field(description="The data type of the output field (e.g., 'string', 'integer', 'boolean', 'array', 'object')")
-#         description: str = Field(description="A brief description of what this field represents")
-
-#     class PlanStep(BaseModel):
-#         step_id: int = Field(description="Sequential identifier for the step")
-#         goal: str = Field(description="The objective for the Brain Agent in this step. It should be a concise description of what the agent should accomplish using the tools available.")
-#         success_criteria: str = Field(description="Description of a successful outcome for this step")
-
-#     output_schema: list[OutputField] = Field(
-#         description="A list defining the fields for the final output object. Each field should have a name (snake_case), type, and description."
-#     )
-#     plan: list[PlanStep] = Field(
-#         description="A sequential list of steps that represents the current plan for the Brain Agent"
-#     )
-
-
 class MyBrainAgent():
     def __init__(self, ctx: my_utils.MyAgentContext):
         self.max_steps = 1000
-        self.ctx = ctx
-        # self.output_schema = my_utils.convert_pydantic_model_to_openai_output_schema(PlannerAgentOutputModel)
-        
+        self.ctx = ctx      
         self.my_agent_tools = MyBrainAgentTools(ctx=self.ctx)
 
         self.message_manager = my_utils.MessageManager(system_message_content=self.get_system_prompt())
@@ -63,11 +29,15 @@ class MyBrainAgent():
         
         for step_number in range(self.max_steps):
             action_result = await self.step(step_number=step_number)
-            if action_result.is_done:
+            
+            if action_result.action_name == "done":
                 logger.info(f'Task completed at step {step_number} with success: {action_result.success}')
                 break
         else:
-            logger.info(f'Task failed after max {self.max_steps} steps')
+            logger.error(f'Task failed after max {self.max_steps} steps')
+            action_result = ActionResult(action_name="done",
+                                         action_result_msg=f"Task failed after max {self.max_steps} steps",
+                                         success=False)
 
         return action_result
     
@@ -94,10 +64,11 @@ class MyBrainAgent():
         if response.output_text:
             logger.info(f"Step {step_number}, Response Message:\n{response.output_text}")
             self.message_manager.add_ai_message(content=response.output_text, ephemeral=False)
-            action_result = ActionResult(action_result_msg="No action executed. The model output is text.", success=True, is_done=False)
+            action_result = ActionResult(action_name="output_text",
+                                         action_result_msg=f"{response.output_text}",
+                                         success=True)
         else:
-            action_result = await self.my_agent_tools.handle_tool_calls(current_step=step_number, 
-                                                                        response=response,                 
-                                                                        message_manager=self.message_manager)
-                        
+            action_result = await self.my_agent_tools.handle_tool_call(current_step=step_number, 
+                                                                       response=response,                 
+                                                                       message_manager=self.message_manager)
         return action_result

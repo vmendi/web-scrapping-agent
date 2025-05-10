@@ -43,14 +43,14 @@ class MyContentExtractAgent:
     async def run(self) -> ActionResult:
         logger.info(f'Starting content-extraction task at {self.ctx.run_id}')
 
-        last_action_result: ActionResult | None = None
+        action_result: ActionResult | None = None
         for step_number in range(self.max_steps):
-            last_action_result = await self.step(step_number=step_number)
+            action_result = await self.step(step_number=step_number)
 
-            if last_action_result.is_done:
+            if action_result.action_name == "output_text":
                 break
 
-        extracted_rows = last_action_result.content['rows']
+        extracted_rows = action_result.content['rows'] if action_result.content else []
         if len(extracted_rows) > 0:
             timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
             csv_path = os.path.abspath(f"{self.ctx.save_dir}/extracted_{timestamp}.csv")
@@ -64,14 +64,16 @@ class MyContentExtractAgent:
             logger.info(f'Extracted {len(extracted_rows)} rows and saved to {csv_path}')
             logger.info("\n" + tabulate(extracted_rows, headers='keys', tablefmt='simple'))
 
-            return ActionResult(action_result_msg=f'Successfully extracted and persisted {len(extracted_rows)} rows to {csv_path}', 
-                                success=True, 
-                                is_done=True,
-                                content={'rows': extracted_rows, 'csv_path': csv_path})
+            return ActionResult(
+                action_name="done",
+                action_result_msg=f'Successfully extracted and persisted {len(extracted_rows)} rows to {csv_path}', 
+                success=True,
+                content={'rows': extracted_rows, 'csv_path': csv_path})
         else:
-            return ActionResult(action_result_msg='Extraction failed: No content was found on the page that could be extracted.', 
-                                success=False, 
-                                is_done=True)
+            return ActionResult(
+                action_name="done",
+                action_result_msg='Extraction failed: No content was found on the page that could be extracted.', 
+                success=False)
 
     async def step(self, step_number: int) -> ActionResult:
         my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps, agent_name="Content Extract Agent")
@@ -91,8 +93,7 @@ class MyContentExtractAgent:
                     f'Here is the full page content rendered as Markdown:\n\n'
                     f'```markdown\n{markdown_content}\n```\n\n'
                 ),
-            }
-        )
+            })
 
         my_utils.MessageManager.persist_state(messages=messages, 
                                               step_number=step_number, 
@@ -112,12 +113,12 @@ class MyContentExtractAgent:
         await self.ctx.browser_context.remove_highlights()
     
         if response.output_text:
-            action_result = ActionResult(action_result_msg=f'Extraction completed.', 
-                                         success=True, 
-                                         is_done=True,
+            action_result = ActionResult(action_name="output_text",
+                                         action_result_msg=f'Extraction completed.', 
+                                         success=True,
                                          content={'rows': json.loads(response.output_text)['rows']})
         else:
-            action_result = await self.my_agent_tools.handle_tool_calls(current_step=step_number, 
+            action_result = await self.my_agent_tools.handle_tool_call(current_step=step_number, 
                                                                         response=response,                 
                                                                         message_manager=self.message_manager)
 

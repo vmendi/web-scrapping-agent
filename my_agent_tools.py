@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 
 class ActionResult(BaseModel):
+    # The name of the action that was executed.
+    action_name: str = "default_action_name"
+
     # Success from the point of view of the action, but we don't know if semantically it was successful or not. 
     # The agent will decide that by looking at the new current state after the action.
     success: bool = True
@@ -24,9 +27,6 @@ class ActionResult(BaseModel):
     # A message to return to the agent in either case of success or failure.
     action_result_msg: str = None           
     
-    # Signals that it was the last step for the agent.
-    is_done: Optional[bool] = False
-
     # Any kind of content that the action or agent wants to return to the caller
     content: Optional[dict[str, Any]] = None
 
@@ -39,9 +39,7 @@ async def done(ctx: RunContextWrapper[MyAgentContext], success: bool, message_to
         success: bool - Whether the task is finished successfully or not.
         message_to_user: str - A message to return to the user in either case of success or failure.
     """	
-    return ActionResult(action_result_msg=message_to_user, 
-                        success=success, 
-                        is_done=True)
+    return ActionResult(action_name="done", action_result_msg=message_to_user, success=success)
 
 
 async def search_google(ctx: RunContextWrapper[MyAgentContext], query: str) -> ActionResult:
@@ -53,16 +51,14 @@ async def search_google(ctx: RunContextWrapper[MyAgentContext], query: str) -> A
     page = await ctx.browser_context.get_current_page()
     await page.goto(f'https://www.google.com/search?q={query}&udm=14')
     await page.wait_for_load_state()
-    return ActionResult(action_result_msg=f'Searched for "{query}" using Google',
-                        success=True)
+    return ActionResult(action_name="search_google", action_result_msg=f'Searched for "{query}" using Google', success=True)
 
 
 async def go_back(ctx: RunContextWrapper[MyAgentContext]) -> ActionResult:
     """Navigate back to the previous page in the browser history of the current tab.
     """
     await ctx.browser_context.go_back()
-    return ActionResult(action_result_msg='Navigated back', 
-                        success=True)
+    return ActionResult(action_name="go_back", action_result_msg='Navigated back', success=True)
 
 
 async def go_to_url(ctx: RunContextWrapper[MyAgentContext], url: str) -> ActionResult:
@@ -74,8 +70,7 @@ async def go_to_url(ctx: RunContextWrapper[MyAgentContext], url: str) -> ActionR
     page = await ctx.browser_context.get_current_page()
     await page.goto(url)
     await page.wait_for_load_state()
-    return ActionResult(action_result_msg=f'Navigated to {url}', 
-                        success=True)
+    return ActionResult(action_name="go_to_url", action_result_msg=f'Navigated to {url}', success=True)
 
 
 async def input_text(ctx: RunContextWrapper[MyAgentContext], index: int, text: str) -> ActionResult:
@@ -91,8 +86,7 @@ async def input_text(ctx: RunContextWrapper[MyAgentContext], index: int, text: s
     element_node = await ctx.browser_context.get_dom_element_by_index(index)
     await ctx.browser_context._input_text_element_node(element_node, text)
 
-    return ActionResult(action_result_msg=f'Input {text} into index {index}', 
-                        success=True)
+    return ActionResult(action_name="input_text", action_result_msg=f'Input {text} into index {index}', success=True)
 
 
 async def click_element(ctx: RunContextWrapper[MyAgentContext], index: int) -> ActionResult:
@@ -111,7 +105,8 @@ async def click_element(ctx: RunContextWrapper[MyAgentContext], index: int) -> A
 
     # if element has file uploader then dont click
     if await ctx.browser_context.is_file_uploader(element_node):
-        return ActionResult(action_result_msg="Index {index} - has an element which opens file upload dialog. " +
+        return ActionResult(action_name="click_element", 
+                            action_result_msg="Index {index} - has an element which opens file upload dialog. " +
                                               "To upload files please use a specific function to upload files", 
                             success=False)
 
@@ -128,11 +123,12 @@ async def click_element(ctx: RunContextWrapper[MyAgentContext], index: int) -> A
             msg += f' - {new_tab_msg}'
             await ctx.browser_context.switch_to_tab(-1)
         
-        return ActionResult(action_result_msg=msg,
-                            success=True)
+        return ActionResult(action_name="click_element", action_result_msg=msg, success=True)
     except Exception as e:
-        return ActionResult(action_result_msg=f"Element not clickable with index {index} - most likely the page changed. Exception\n: {str(e)}",
-                            success=False)
+        return ActionResult(
+            action_name="click_element", 
+            action_result_msg=f"Element not clickable with index {index} - most likely the page changed. Exception\n: {str(e)}",
+            success=False)
 
 
 async def open_tab(ctx: RunContextWrapper[MyAgentContext], url: str) -> ActionResult:
@@ -143,8 +139,7 @@ async def open_tab(ctx: RunContextWrapper[MyAgentContext], url: str) -> ActionRe
     """
     await ctx.browser_context.create_new_tab(url)
 
-    return ActionResult(action_result_msg=f'Opened new tab with {url}', 
-                        success=True)
+    return ActionResult(action_name="open_tab", action_result_msg=f'Opened new tab with {url}', success=True)
 
 
 async def switch_tab(ctx: RunContextWrapper[MyAgentContext], page_id: int) -> ActionResult:
@@ -158,8 +153,7 @@ async def switch_tab(ctx: RunContextWrapper[MyAgentContext], page_id: int) -> Ac
     page = await ctx.browser_context.get_current_page()
     await page.wait_for_load_state()
     
-    return ActionResult(action_result_msg=f'Switched to tab {page_id}',
-                        success=True)
+    return ActionResult(action_name="switch_tab", action_result_msg=f'Switched to tab {page_id}', success=True)
 
 
 async def scroll_down(ctx: RunContextWrapper[MyAgentContext], amount: int) -> ActionResult:
@@ -169,14 +163,15 @@ async def scroll_down(ctx: RunContextWrapper[MyAgentContext], amount: int) -> Ac
         amount: int - The number of pixels to scroll down. If 0, scrolls down one page height.
     """
     page = await ctx.browser_context.get_current_page()
+    
     if amount != 0:
         await page.evaluate(f'window.scrollBy(0, {amount});')
     else:
         await page.evaluate('window.scrollBy(0, window.innerHeight);')
 
     amount_str = f'{amount} pixels' if amount != 0 else 'one page'
-    return ActionResult(action_result_msg=f'Scrolled down the page by {amount_str}', 
-                        success=True)
+
+    return ActionResult(action_name="scroll_down", action_result_msg=f'Scrolled down the page by {amount_str}', success=True)
 
 
 async def scroll_up(ctx: RunContextWrapper[MyAgentContext], amount: int) -> ActionResult:
@@ -186,14 +181,15 @@ async def scroll_up(ctx: RunContextWrapper[MyAgentContext], amount: int) -> Acti
         amount: int - The number of pixels to scroll up. If 0, scrolls up one page height.
     """
     page = await ctx.browser_context.get_current_page()
+
     if amount != 0:
         await page.evaluate(f'window.scrollBy(0, -{amount});')
     else:
         await page.evaluate('window.scrollBy(0, -window.innerHeight);')
 
     amount_str = f'{amount} pixels' if amount != 0 else 'one page'
-    return ActionResult(action_result_msg=f'Scrolled up the page by {amount_str}', 
-                        success=True)
+
+    return ActionResult(action_name="scroll_up", action_result_msg=f'Scrolled up the page by {amount_str}', success=True)
 
 
 async def send_keys(ctx: RunContextWrapper[MyAgentContext], keys: str) -> ActionResult:
@@ -216,8 +212,7 @@ async def send_keys(ctx: RunContextWrapper[MyAgentContext], keys: str) -> Action
         else:
             raise e
     
-    return ActionResult(action_result_msg=f'Sent keys: {keys}',
-                        success=True)
+    return ActionResult(action_name="send_keys", action_result_msg=f'Sent keys: {keys}', success=True)
 
 
 async def scroll_to_text(ctx: RunContextWrapper[MyAgentContext], text: str) -> ActionResult:
@@ -241,17 +236,20 @@ async def scroll_to_text(ctx: RunContextWrapper[MyAgentContext], text: str) -> A
                 if await locator.count() > 0 and await locator.first.is_visible():
                     await locator.first.scroll_into_view_if_needed()
                     await asyncio.sleep(0.5)  # Wait for scroll to complete
-                    return ActionResult(action_result_msg=f'Scrolled to text: {text}',
+                    return ActionResult(action_name="scroll_to_text", 
+                                        action_result_msg=f'Scrolled to text: {text}',
                                         success=True)
             except Exception as e:
                 logger.error(f'Locator attempt failed: {str(e)}')
                 continue
 
-        return ActionResult(action_result_msg=f"Text '{text}' not found or not visible on page",
+        return ActionResult(action_name="scroll_to_text", 
+                            action_result_msg=f"Text '{text}' not found or not visible on page", 
                             success=False)
 
     except Exception as e:
-        return ActionResult(action_result_msg=f"Failed to scroll to text '{text}': {str(e)}",
+        return ActionResult(action_name="scroll_to_text", 
+                            action_result_msg=f"Failed to scroll to text '{text}': {str(e)}", 
                             success=False)
 
 
@@ -313,16 +311,13 @@ async def get_dropdown_options(ctx: RunContextWrapper[MyAgentContext], index: in
         if all_options:
             msg = '\n'.join(all_options)
             msg += '\nUse the exact text string in select_dropdown_option'
-            return ActionResult(action_result_msg=msg,
-                                success=True)
+            return ActionResult(action_name="get_dropdown_options", action_result_msg=msg, success=True)
         else:
             msg = 'No options found in any frame for dropdown'
-            return ActionResult(action_result_msg=msg,
-                                success=False)
+            return ActionResult(action_name="get_dropdown_options", action_result_msg=msg, success=False)
 
     except Exception as e:
-        return ActionResult(action_result_msg=f'Error getting options: {str(e)}',
-                            success=False)
+        return ActionResult(action_name="get_dropdown_options", action_result_msg=f'Error getting options: {str(e)}', success=False)
 
 
 async def select_dropdown_option(ctx: RunContextWrapper[MyAgentContext], index: int, text: str) -> ActionResult:
@@ -338,8 +333,10 @@ async def select_dropdown_option(ctx: RunContextWrapper[MyAgentContext], index: 
 
     # Validate that we're working with a select element
     if dom_element.tag_name != 'select':
-        return ActionResult(action_result_msg=f'Cannot select option: Element with index {index} is a {dom_element.tag_name}, not a select',
-                            success=False)
+        return ActionResult(
+            action_name="select_dropdown_option", 
+            action_result_msg=f'Cannot select option: Element with index {index} is a {dom_element.tag_name}, not a select',
+            success=False)
 
     logger.debug(f"Attempting to select '{text}' using xpath: {dom_element.xpath}")
     logger.debug(f'Element attributes: {dom_element.attributes}')
@@ -397,7 +394,8 @@ async def select_dropdown_option(ctx: RunContextWrapper[MyAgentContext], index: 
                         await frame.locator('//' + dom_element.xpath).nth(0).select_option(label=text, timeout=1000)
                     )
 
-                    return ActionResult(action_result_msg=f'Selected option {text} with value {selected_option_values}',
+                    return ActionResult(action_name="select_dropdown_option", 
+                                        action_result_msg=f'Selected option {text} with value {selected_option_values}', 
                                         success=True)
 
             except Exception as frame_e:
@@ -407,11 +405,13 @@ async def select_dropdown_option(ctx: RunContextWrapper[MyAgentContext], index: 
 
             frame_index += 1
 
-        return ActionResult(action_result_msg=f"Could not select option '{text}' in any frame",
+        return ActionResult(action_name="select_dropdown_option", 
+                            action_result_msg=f"Could not select option '{text}' in any frame", 
                             success=False)
 
     except Exception as e:
-        return ActionResult(action_result_msg=f'Selection failed: {str(e)}',
+        return ActionResult(action_name="select_dropdown_option", 
+                            action_result_msg=f'Selection failed: {str(e)}',
                             success=False)
 
 
@@ -421,7 +421,7 @@ class VisitedUrl(BaseModel):
     reason: str = Field(..., description="Why the URL was relevant or not to the navigation goal.")
 
 class NavigationDoneResult(BaseModel):
-    """The result of the navigation_done task."""
+    """The result of the navigation task as reported by the navigator agent."""
     success: bool = Field(..., description="Whether the navigation was successful or not.")
     status_message: str = Field(..., description="A message to return to the user in either case of success or failure.")
     visited_urls: list[VisitedUrl] = Field(..., description="A list of URLs that were visited, whether they were relevant to the navigation goal or not, and why.")
@@ -429,9 +429,9 @@ class NavigationDoneResult(BaseModel):
 async def navigation_done(ctx: RunContextWrapper[MyAgentContext], navigation_done_result: NavigationDoneResult) -> ActionResult:
     """The navigator has finished the task with success or failure, for whatever the reason.
     """	
-    return ActionResult(action_result_msg=navigation_done_result.model_dump_json(), 
-                        success=navigation_done_result.success, 
-                        is_done=True)
+    return ActionResult(action_name="navigation_done",
+                        action_result_msg=navigation_done_result.model_dump_json(), 
+                        success=navigation_done_result.success)
 
 
 async def wna_navigate_and_find(ctx: RunContextWrapper[MyAgentContext], navigation_goal: str) -> ActionResult:
@@ -444,9 +444,12 @@ async def wna_navigate_and_find(ctx: RunContextWrapper[MyAgentContext], navigati
     
     navigator = MyNavigatorAgent(ctx=ctx.new_agent_context(), 
                                  navigation_goal=navigation_goal)
-    nav_result: ActionResult = await navigator.run()
+    
+    action_result: ActionResult = await navigator.run()
 
-    return ActionResult(action_result_msg=nav_result.action_result_msg, success=nav_result.success)
+    return ActionResult(action_name="wna_navigate_and_find", 
+                        action_result_msg=action_result.action_result_msg, 
+                        success=action_result.success)
 
 
 async def cea_extract_content(ctx: RunContextWrapper[MyAgentContext], extraction_goal: str, row_schema: str) -> ActionResult:
@@ -466,7 +469,12 @@ async def cea_extract_content(ctx: RunContextWrapper[MyAgentContext], extraction
     agent = MyContentExtractAgent(ctx=ctx.new_agent_context(), 
                                   extraction_goal=extraction_goal, 
                                   row_schema=row_schema)
-    return await agent.run()
+    
+    action_result: ActionResult = await agent.run()
+
+    return ActionResult(action_name="cea_extract_content", 
+                        action_result_msg=action_result.action_result_msg, 
+                        success=action_result.success)
     
 
 class PlanStep(BaseModel):
@@ -487,7 +495,9 @@ async def persist_plan(ctx: RunContextWrapper[MyAgentContext], plan: Plan) -> Ac
     """
     ctx.memory["plan"] = plan
 
-    return ActionResult(action_result_msg=f"Plan persisted to memory", success=True)
+    return ActionResult(action_name="persist_plan", 
+                        action_result_msg=f"Plan persisted to memory",
+                        success=True)
 
 
 async def print_file_content(ctx: RunContextWrapper[MyAgentContext], file_path: str) -> ActionResult:
@@ -525,14 +535,18 @@ async def print_file_content(ctx: RunContextWrapper[MyAgentContext], file_path: 
         else: # Plain text or other
             formatted_content += content
 
-        return ActionResult(action_result_msg=formatted_content, success=True)
+        return ActionResult(action_name="print_file_content", action_result_msg=formatted_content, success=True)
 
     except FileNotFoundError:
-        return ActionResult(action_result_msg=f"Error: File not found at '{file_path}'", success=False)
+        return ActionResult(action_name="print_file_content", 
+                            action_result_msg=f"Error: File not found at '{file_path}'",
+                            success=False)
     except Exception as e:
-        return ActionResult(action_result_msg=f"Error reading or formatting file '{file_path}': {str(e)}", success=False)
+        return ActionResult(action_name="print_file_content", 
+                            action_result_msg=f"Error reading or formatting file '{file_path}': {str(e)}", 
+                            success=False)
 
-
+    
 class MyAgentTools:
     def __init__(self, ctx: MyAgentContext, tools: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]]):
         self.ctx = ctx
@@ -559,12 +573,12 @@ class MyAgentTools:
         tool_name = function_tool_call.name
         tool = next((t for t in self.tools if t.__name__ == tool_name), None)
         if not tool:
-            return ActionResult(action_result_msg=f"Tool '{tool_name}' not found", success=False)
+            return ActionResult(action_name="execute_tool", action_result_msg=f"Tool '{tool_name}' not found", success=False)
 
         tool_args = json.loads(function_tool_call.arguments)
         return await tool(self.ctx, **tool_args)
 
-    async def handle_tool_calls(self, current_step: int, response: Response, message_manager: Any) -> ActionResult:
+    async def handle_tool_call(self, current_step: int, response: Response, message_manager: Any) -> ActionResult:
         tool_call_generator = (item for item in response.output if isinstance(item, ResponseFunctionToolCall))
         function_tool_call: ResponseFunctionToolCall = next(tool_call_generator, None)
 
