@@ -40,34 +40,38 @@ class MyContentExtractAgent:
             return fh.read()
         
  
-    async def run(self) -> tuple[list[dict], str]:
+    async def run(self) -> ActionResult:
         logger.info(f'Starting content-extraction task at {self.ctx.run_id}')
 
-        self._extracted_rows: list[dict[str, Any]] = []
         last_action_result: ActionResult | None = None
-
         for step_number in range(self.max_steps):
             last_action_result = await self.step(step_number=step_number)
 
             if last_action_result.is_done:
                 break
 
-        csv_path = None
-        if len(self._extracted_rows) > 0:
+        extracted_rows = last_action_result.content['rows']
+        if len(extracted_rows) > 0:
             timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
             csv_path = os.path.abspath(f"{self.ctx.save_dir}/extracted_{timestamp}.csv")
 
-            fieldnames = list(self._extracted_rows[0].keys()) if self._extracted_rows else []
+            fieldnames = list(extracted_rows[0].keys()) if extracted_rows else []
             with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()
-                writer.writerows(self._extracted_rows)
+                writer.writerows(extracted_rows)
 
-            logger.info(f'Extracted {len(self._extracted_rows)} rows and saved to {csv_path}')
-            logger.info("\n" + tabulate(self._extracted_rows, headers='keys', tablefmt='simple'))
-    
-        return self._extracted_rows, csv_path
+            logger.info(f'Extracted {len(extracted_rows)} rows and saved to {csv_path}')
+            logger.info("\n" + tabulate(extracted_rows, headers='keys', tablefmt='simple'))
 
+            return ActionResult(action_result_msg=f'Successfully extracted and persisted {len(extracted_rows)} rows to {csv_path}', 
+                                success=True, 
+                                is_done=True,
+                                content={'rows': extracted_rows, 'csv_path': csv_path})
+        else:
+            return ActionResult(action_result_msg='Extraction failed: No content was found on the page that could be extracted.', 
+                                success=False, 
+                                is_done=True)
 
     async def step(self, step_number: int) -> ActionResult:
         my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps, agent_name="Content Extract Agent")
@@ -94,7 +98,6 @@ class MyContentExtractAgent:
                                               step_number=step_number, 
                                               save_dir=f"{self.ctx.save_dir}/{self.ctx.agent_id:02d}_content_extract_agent")
 
-        
         logger.info(f'Step {step_number} - sending messages to LLM')
         response: Response = self.ctx.openai_client.responses.create(
             model="gpt-4.1",
@@ -109,10 +112,10 @@ class MyContentExtractAgent:
         await self.ctx.browser_context.remove_highlights()
     
         if response.output_text:
-            self._extracted_rows = json.loads(response.output_text)['rows']
-            action_result = ActionResult(action_result_msg=f'Extraction of {len(self._extracted_rows)} rows completed.', 
+            action_result = ActionResult(action_result_msg=f'Extraction completed.', 
                                          success=True, 
-                                         is_done=True)
+                                         is_done=True,
+                                         content={'rows': json.loads(response.output_text)['rows']})
         else:
             action_result = await self.my_agent_tools.handle_tool_calls(current_step=step_number, 
                                                                         response=response,                 

@@ -49,8 +49,8 @@ You are an agent: keep navigating until the navigation goal is achieved, or unti
 success: true|false
 message_to_user: JSON string with the following keys
   - status: "success" | "failure"
-  - status_message: a short human-readable summary of what happened
-  - visited_urls: [list of dictionaries with the following keys:
+  - status_message: "Summary of actions taken and findings on success, or explanation of why the goal failed on failure"
+  - visited_urls: [List of dictionaries with the following keys:
     - url: the URL that was visited
     - relevant: boolean indicating if the URL was relevant to the navigation goal
     - reason: string explaining why the URL was relevant or not

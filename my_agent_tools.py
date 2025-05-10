@@ -1,6 +1,9 @@
 import asyncio
 import json
 import logging
+import os
+import csv
+from tabulate import tabulate
 from typing import Any, Awaitable, Callable, List, Optional
 from functools import cached_property
 from pydantic import BaseModel, Field
@@ -23,6 +26,9 @@ class ActionResult(BaseModel):
     
     # Signals that it was the last step for the agent.
     is_done: Optional[bool] = False
+
+    # Any kind of content that the action or agent wants to return to the caller
+    content: Optional[dict[str, Any]] = None
 
 
 
@@ -458,28 +464,9 @@ async def cea_extract_content(ctx: RunContextWrapper[MyAgentContext], extraction
     """
     from my_content_extract_agent import MyContentExtractAgent
     agent = MyContentExtractAgent(ctx=ctx.new_agent_context(), 
-                                    extraction_goal=extraction_goal, 
-                                    row_schema=row_schema)
-    rows, csv_path = await agent.run()
-
-    if csv_path:
-        result_payload = {
-            "status": "success",
-            "status_message": f"Successfully extracted and persisted {len(rows)} items to {csv_path}.",
-            "persisted_count": len(rows),
-            "csv_path": csv_path,
-            "rows": rows,
-        }
-        return ActionResult(action_result_msg=json.dumps(result_payload), success=True)
-    else:
-        result_payload = {
-            "status": "failure",
-            "status_message": "Failed to extract content",
-            "persisted_count": 0,
-            "csv_path": None,
-            "rows": [],            
-        }
-        return ActionResult(action_result_msg=json.dumps(result_payload), success=False)
+                                  extraction_goal=extraction_goal, 
+                                  row_schema=row_schema)
+    return await agent.run()
     
 
 class PlanStep(BaseModel):
@@ -501,6 +488,49 @@ async def persist_plan(ctx: RunContextWrapper[MyAgentContext], plan: Plan) -> Ac
     ctx.memory["plan"] = plan
 
     return ActionResult(action_result_msg=f"Plan persisted to memory", success=True)
+
+
+async def print_file_content(ctx: RunContextWrapper[MyAgentContext], file_path: str) -> ActionResult:
+    """Reads the content of a file and prints it into our conversation.
+    Supported extensions: .csv, .json. Other extensions will be treated as plain text.
+
+    Args:
+        file_path: str - The path to the file to read.
+    """
+    try:
+        _, file_extension = os.path.splitext(file_path)
+        file_extension = file_extension.lower()
+
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+
+        formatted_content = f"Content of file '{file_path}':\n"
+
+        if file_extension == '.csv':
+            reader = csv.reader(content.splitlines())
+            rows = list(reader)
+            if not rows:
+                formatted_content += "(empty CSV)"
+            else:
+                # Use tabulate for better table formatting
+                headers = rows[0] if rows else []
+                table_data = rows[1:] if len(rows) > 1 else []
+                formatted_content += tabulate(table_data, headers=headers, tablefmt="grid")
+        elif file_extension == '.json':
+            try:
+                parsed_json = json.loads(content)
+                formatted_content += json.dumps(parsed_json, indent=2)
+            except json.JSONDecodeError as e:
+                formatted_content += f"Error decoding JSON: {e}\nRaw content:\n{content}"
+        else: # Plain text or other
+            formatted_content += content
+
+        return ActionResult(action_result_msg=formatted_content, success=True)
+
+    except FileNotFoundError:
+        return ActionResult(action_result_msg=f"Error: File not found at '{file_path}'", success=False)
+    except Exception as e:
+        return ActionResult(action_result_msg=f"Error reading or formatting file '{file_path}': {str(e)}", success=False)
 
 
 class MyAgentTools:
@@ -543,13 +573,13 @@ class MyAgentTools:
             
         logger.info(f"Step {current_step}, Function Tool Call:\n{format_json_pretty(function_tool_call.to_json())}")
         message_manager.add_ai_function_tool_call_message(function_tool_call=function_tool_call,
-                                                               ephemeral=False)
+                                                          ephemeral=False)
 
         action_result = await self.execute_tool(function_tool_call=function_tool_call)
         logger.info(f'Step {current_step}, Function Tool Call Result:\n{format_json_pretty(action_result.model_dump_json())}')
         message_manager.add_tool_result_message(result_message=action_result.action_result_msg,
-                                                     tool_call_id=function_tool_call.call_id,
-                                                     ephemeral=False)
+                                                tool_call_id=function_tool_call.call_id,
+                                                ephemeral=False)
         return action_result
 
 
@@ -557,6 +587,7 @@ BRAIN_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[A
     done,
     wna_navigate_and_find,
     cea_extract_content,
+    print_file_content,
     # persist_plan,
 ]
 
