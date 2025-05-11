@@ -53,14 +53,14 @@ async def main():
                          run_id=run_id)
     
     try:
-        agent = MyBrainAgent(ctx=ctx.new_agent_context())
+        # agent = MyBrainAgent(ctx=ctx.new_agent_context())
 
         # agent = MyNavigatorAgent(ctx=ctx.new_agent_context(), 
         #                          navigation_goal="Locate a page that lists all courses offered by all schools at Harvard University.")
         
-        # agent = MyContentExtractAgent(ctx=ctx.new_agent_context(),
-        #                               extraction_goal="Extract all courses offered by all schools at Harvard University.",
-        #                               row_schema="""{"school_name": "string"}""")
+        agent = MyContentExtractAgent(ctx=ctx.new_agent_context(),
+                                      extraction_goal="Extract all courses listed in the Harvard University course catalog for the 2024-25 academic year at https://courses.my.harvard.edu. For each course, extract the course title, course code, course description, department name, department code, and school name. Ensure that courses from all Harvard schools are included.",
+                                      row_schema="""{"course_title": "string", "course_code": "string", "course_description": "string", "department_name": "string", "department_code": "string", "school_name": "string"}""")
         await agent.run()
     finally:
         if browser_context:

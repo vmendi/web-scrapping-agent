@@ -1,14 +1,9 @@
-from typing import Any
-import datetime
 import json
 import logging
-import os
-import csv
-from tabulate import tabulate
 
-from openai.types.responses import ResponseFunctionToolCall, Response
+from openai.types.responses import Response
 
-from my_agent_tools import MyContentExtractAgentTools, ActionResult
+from my_agent_tools import CEA_TOOLS, MyAgentTools, ActionResult
 import markdownify
 import my_utils
 
@@ -20,20 +15,24 @@ class MyContentExtractAgent:
         self.max_steps = 20
         self.ctx = ctx
         self.extraction_goal = extraction_goal
-        self.output_schema = my_utils.convert_simplified_schema_to_rows_in_openai_output_schema(row_schema)
-
         self.message_manager = my_utils.MessageManager(system_message_content=self._read_system_prompt())
 
         self.message_manager.add_user_message(
-            content=("You are tasked with extracting structured data from a webpage.\n"
-                     f"Extraction goal: {self.extraction_goal}\n\n"
-                     "The caller provided the JSON schema of a *single row* that must be adhered to:\n"
-                     f"```json\n{json.dumps(row_schema, indent=2)}\n```\n"
-                     "Produce a JSON array where each element respects that schema."),
+            content=(f"Extraction goal: {self.extraction_goal}\n\n"
+                     "The JSON schema of a *single row* that must be adhered to:\n"
+                     f"```json\n{json.dumps(row_schema, indent=2)}\n```\n"),
             ephemeral=False
         )
 
-        self.my_agent_tools = MyContentExtractAgentTools(ctx=self.ctx)
+        self.my_agent_tools = MyAgentTools(ctx=self.ctx, tools=CEA_TOOLS) 
+
+        # Patch the persist_rows schema in tools_schema
+        # custom_schema = my_utils.convert_simplified_schema_to_rows_in_openai_output_schema(row_schema)
+
+        # for tool in self.my_agent_tools.tools_schema:
+        #     if tool["name"] == "persist_rows":
+        #         tool["parameters"]["properties"]["rows"]["items"] = custom_schema["format"]["schema"]["properties"]["rows"]["items"]
+        #         break
 
     def _read_system_prompt(self) -> str:
         with open( "my_content_extract_system_prompt_00.md", "r", encoding="utf-8") as fh:
@@ -41,39 +40,21 @@ class MyContentExtractAgent:
         
  
     async def run(self) -> ActionResult:
-        logger.info(f'Starting content-extraction task at {self.ctx.run_id}')
-
-        action_result: ActionResult | None = None
+        logger.info(f'Starting planning task at {self.ctx.run_id}')
+        
         for step_number in range(self.max_steps):
             action_result = await self.step(step_number=step_number)
-
-            if action_result.action_name == "output_text":
+            
+            if action_result.action_name == "extraction_done":
+                logger.info(f'Task completed at step {step_number} with success: {action_result.success}')
                 break
-
-        extracted_rows = action_result.content['rows'] if action_result.content else []
-        if len(extracted_rows) > 0:
-            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-            csv_path = os.path.abspath(f"{self.ctx.save_dir}/extracted_{timestamp}.csv")
-
-            fieldnames = list(extracted_rows[0].keys()) if extracted_rows else []
-            with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(extracted_rows)
-
-            logger.info(f'Extracted {len(extracted_rows)} rows and saved to {csv_path}')
-            logger.info("\n" + tabulate(extracted_rows, headers='keys', tablefmt='simple'))
-
-            return ActionResult(
-                action_name="done",
-                action_result_msg=f'Successfully extracted and persisted {len(extracted_rows)} rows to {csv_path}', 
-                success=True,
-                content={'rows': extracted_rows, 'csv_path': csv_path})
         else:
-            return ActionResult(
-                action_name="done",
-                action_result_msg='Extraction failed: No content was found on the page that could be extracted.', 
-                success=False)
+            logger.error(f'Task failed after max {self.max_steps} steps')
+            action_result = ActionResult(action_name="extraction_done",
+                                         action_result_msg=f"Task failed after max {self.max_steps} steps",
+                                         success=False)
+
+        return action_result
 
     async def step(self, step_number: int) -> ActionResult:
         my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps, agent_name="Content Extract Agent")
@@ -103,7 +84,6 @@ class MyContentExtractAgent:
         response: Response = self.ctx.openai_client.responses.create(
             model="gpt-4.1",
             input=messages,
-            text=self.output_schema,
             tools=self.my_agent_tools.tools_schema,
             tool_choice='auto',
             parallel_tool_calls=False,
@@ -113,14 +93,15 @@ class MyContentExtractAgent:
         await self.ctx.browser_context.remove_highlights()
     
         if response.output_text:
+            logger.info(f"Step {step_number}, Response Message:\n{response.output_text}")
+            self.message_manager.add_ai_message(content=response.output_text, ephemeral=False)
             action_result = ActionResult(action_name="output_text",
-                                         action_result_msg=f'Extraction completed.', 
-                                         success=True,
-                                         content={'rows': json.loads(response.output_text)['rows']})
+                                         action_result_msg=f"{response.output_text}",
+                                         success=True)
         else:
             action_result = await self.my_agent_tools.handle_tool_call(current_step=step_number, 
-                                                                        response=response,                 
-                                                                        message_manager=self.message_manager)
+                                                                       response=response,                 
+                                                                       message_manager=self.message_manager)
 
         return action_result
     

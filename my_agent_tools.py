@@ -7,6 +7,7 @@ from tabulate import tabulate
 from typing import Any, Awaitable, Callable, List, Optional
 from functools import cached_property
 from pydantic import BaseModel, Field
+import datetime
 
 from openai.types.responses import ResponseFunctionToolCall, Response
 from agents.function_schema import function_schema
@@ -546,7 +547,62 @@ async def print_file_content(ctx: RunContextWrapper[MyAgentContext], file_path: 
                             action_result_msg=f"Error reading or formatting file '{file_path}': {str(e)}", 
                             success=False)
 
+
+async def persist_rows(ctx: RunContextWrapper[MyAgentContext], rows: list[str]) -> ActionResult:
+    """Persist rows of data that conform to the provided schema.
     
+    Args:
+        rows: list[str] - A list of strings where each string can be parsed as a JSON object that conforms to the schema provided.
+    """
+    if not rows:
+        return ActionResult(action_name="persist_rows", 
+                           action_result_msg="No rows were passed to the tool!", 
+                           success=False)
+    
+    if "extracted_rows" not in ctx.memory:
+        ctx.memory["extracted_rows"] = []
+    
+    ctx.memory["extracted_rows"].extend(rows)
+    
+    return ActionResult(action_name="persist_rows", 
+                        action_result_msg=f"Successfully persisted {len(rows)} rows. Total rows: {len(ctx.memory['extracted_rows'])}", 
+                        success=True)
+
+
+async def extraction_done(ctx: RunContextWrapper[MyAgentContext], status: bool, status_message: str) -> ActionResult:
+    """Signal that the content extraction is complete and persist the final results.
+    
+    Args:
+        status: bool - Whether the extraction was successful or not.
+        status_message: str - A summary of actions taken on success, or an explanation of why it was not possible to accomplish the goal on failure.
+    """
+    extracted_rows = ctx.memory.get("extracted_rows", [])
+    
+    if extracted_rows:
+        try:
+            fieldnames = list(extracted_rows[0].keys())
+            
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            csv_filename = f"extracted_data_{timestamp}.csv"
+            
+            with open(csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(extracted_rows)
+                
+            status_message = f"{status_message}\nData saved to {csv_filename}"
+        except Exception as e:
+            status_message = f"{status_message}\nError saving to CSV: {str(e)}"
+            status = False
+        
+    return ActionResult(
+        action_name="extraction_done",
+        action_result_msg=f"Extraction complete. Status: {'Success' if status else 'Failed'}. {status_message}\nTotal rows extracted {len(extracted_rows)}",
+        success=status,
+        content={'extracted_rows': extracted_rows, 'csv_path': csv_filename}
+    )
+
+
 class MyAgentTools:
     def __init__(self, ctx: MyAgentContext, tools: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]]):
         self.ctx = ctx
@@ -623,7 +679,6 @@ NAVIGATOR_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitab
 ]
 
 CEA_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]] = [
-    done,
     go_back,
     go_to_url,
     click_element,
@@ -631,6 +686,8 @@ CEA_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[Act
     send_keys,
     get_dropdown_options,
     select_dropdown_option,
+    extraction_done,
+    persist_rows,
 ]
 
 
@@ -647,4 +704,3 @@ class MyNavigatorAgentTools(MyAgentTools):
 class MyContentExtractAgentTools(MyAgentTools):
     def __init__(self, ctx: MyAgentContext):
         super().__init__(ctx, tools=CEA_TOOLS)
-

@@ -13,7 +13,7 @@ class MyNavigatorAgent():
     def __init__(self, ctx: my_utils.MyAgentContext, navigation_goal: str):
         self.max_steps = 100
         self.ctx = ctx
-        self.my_agent_tools = MyAgentTools(ctx=self.ctx, tools=NAVIGATOR_TOOLS)        
+        self.my_agent_tools = MyAgentTools(ctx=self.ctx, tools=NAVIGATOR_TOOLS) 
                
         self.message_manager = my_utils.MessageManager(system_message_content=self.get_system_message())
         self.message_manager.add_user_message(content=self.build_user_prompt(navigation_goal=navigation_goal),
