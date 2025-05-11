@@ -18,8 +18,8 @@ class MyContentExtractAgent:
         self.message_manager = my_utils.MessageManager(system_message_content=self._read_system_prompt())
 
         self.message_manager.add_user_message(
-            content=(f"Extraction goal: {self.extraction_goal}\n\n"
-                     "The JSON schema of a *single row* that must be adhered to:\n"
+            content=(f"extraction_goal: {self.extraction_goal}\n\n"
+                     "json_schema:\n"
                      f"```json\n{json.dumps(row_schema, indent=2)}\n```\n"),
             ephemeral=False
         )
@@ -35,7 +35,7 @@ class MyContentExtractAgent:
         #         break
 
     def _read_system_prompt(self) -> str:
-        with open( "my_content_extract_system_prompt_00.md", "r", encoding="utf-8") as fh:
+        with open( "my_content_extract_system_prompt_01.md", "r", encoding="utf-8") as fh:
             return fh.read()
         
  
@@ -91,6 +91,11 @@ class MyContentExtractAgent:
             temperature=0.0,
         )
         await self.ctx.browser_context.remove_highlights()
+
+        # From the response, get the input and output token usage
+        input_tokens = response.usage_metadata.input_tokens
+        output_tokens = response.usage_metadata.output_tokens
+        logger.info(f"Step {step_number}, Input Tokens: {input_tokens}, Output Tokens: {output_tokens}")
     
         if response.output_text:
             logger.info(f"Step {step_number}, Response Message:\n{response.output_text}")
