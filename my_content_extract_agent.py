@@ -4,7 +4,6 @@ import logging
 from openai.types.responses import Response
 
 from my_agent_tools import CEA_TOOLS, MyAgentTools, ActionResult
-import markdownify
 import my_utils
 
 logger = logging.getLogger(__name__)

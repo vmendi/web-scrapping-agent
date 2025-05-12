@@ -1,8 +1,5 @@
-import json
 import logging
 from pathlib import Path
-from openai.types.responses import ResponseFunctionToolCall
-from pydantic import BaseModel, ConfigDict
 from my_agent_tools import ActionResult, MyAgentTools, NAVIGATOR_TOOLS
 import my_utils
 

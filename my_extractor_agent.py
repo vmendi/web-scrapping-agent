@@ -71,16 +71,14 @@ class MyExtractorAgent:
                 success=False)
 
     async def step(self, step_number: int) -> ActionResult:
-        my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps, agent_name="Content Extract Agent")
-
-        messages = self.message_manager.get_messages()
-        messages.extend(my_utils.get_screenshot_message(browser_context=self.ctx.browser_context))
-        
+        my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps, agent_name="Extractor Agent")
+                
         page = await self.ctx.browser_context.get_current_page()
         html = await page.content()
         markdown_content = markdownify.markdownify(html)
 
-        messages.append(
+        current_state_messages = await my_utils.get_screenshot_message(browser_context=self.ctx.browser_context)
+        current_state_messages.append(
             {
                 'role': 'user',
                 'content': (
@@ -88,6 +86,8 @@ class MyExtractorAgent:
                     f'```markdown\n{markdown_content}\n```\n\n'
                 ),
             })
+        messages = self.message_manager.get_messages()
+        messages.extend(current_state_messages)
 
         my_utils.MessageManager.persist_state(messages=messages, 
                                               step_number=step_number, 

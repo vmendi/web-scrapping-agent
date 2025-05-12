@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 
 import my_utils
-from my_agent_tools import MyBrainAgentTools, ActionResult
+from my_agent_tools import ActionResult, MyAgentTools, BRAIN_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +11,7 @@ class MyBrainAgent():
     def __init__(self, ctx: my_utils.MyAgentContext):
         self.max_steps = 1000
         self.ctx = ctx      
-        self.my_agent_tools = MyBrainAgentTools(ctx=self.ctx)
+        self.my_agent_tools = MyAgentTools(ctx=self.ctx, tools=BRAIN_TOOLS)
 
         self.message_manager = my_utils.MessageManager(system_message_content=self.get_system_prompt())
         self.message_manager.add_user_message(content=self.get_user_prompt(),
