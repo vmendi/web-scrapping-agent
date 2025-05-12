@@ -315,6 +315,16 @@ def log_step_info(logger: logging.Logger, step_number: int, max_steps: int, agen
     logger.info(f"\n{border_line}\n{step_message}\n{border_line}")
 
 
+async def get_screenshot_message(browser_context: BrowserContext) -> list[dict]:
+    browser_state = await browser_context.get_state()
+    screenshot_base64 = browser_state.screenshot
+    return [
+        {
+            "type": "input_image",
+            "image_url": f"data:image/png;base64,{screenshot_base64}",
+            "detail": "high"
+        }
+    ]
 
 async def get_current_browser_state_message(current_step: int, browser_context: BrowserContext) -> list[dict]:
     screenshot_base64 = None

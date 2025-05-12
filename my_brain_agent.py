@@ -18,10 +18,10 @@ class MyBrainAgent():
                                               ephemeral=False)
     
     def get_user_prompt(self) -> str:
-        return Path("my_brain_user_prompt_01.md").read_text()
+        return Path("my_brain_user_01.md").read_text()
             
     def get_system_prompt(self) -> str:
-        return Path("my_brain_system_prompt_02.md").read_text()
+        return Path("my_brain_system_02.md").read_text()
 
 
     async def run(self) -> ActionResult:

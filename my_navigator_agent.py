@@ -22,11 +22,11 @@ class MyNavigatorAgent():
 
     @staticmethod
     def get_system_message() -> str:
-        return Path("my_navigator_system_prompt_02.md").read_text()
+        return Path("my_navigator_system_02.md").read_text()
         
     @staticmethod
     def build_user_prompt(navigation_goal: str) -> str:
-        return Path("my_navigator_user_prompt_00.md").read_text().format(navigation_goal=navigation_goal)
+        return Path("my_navigator_user_00.md").read_text().format(navigation_goal=navigation_goal)
 
     async def run(self) -> ActionResult:
         logger.info(f'Starting navigator agent task at {self.ctx.run_id}')

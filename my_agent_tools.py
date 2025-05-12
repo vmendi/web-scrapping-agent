@@ -478,29 +478,6 @@ async def cea_extract_content(ctx: RunContextWrapper[MyAgentContext], extraction
                         success=action_result.success)
     
 
-class PlanStep(BaseModel):
-    step_id: int
-    goal: str
-    success_criteria: str
-    is_done: bool
-
-class Plan(BaseModel):
-    plan: list[PlanStep]
-
-
-async def persist_plan(ctx: RunContextWrapper[MyAgentContext], plan: Plan) -> ActionResult:
-    """Persist the plan to memory.
-
-    Args:
-        plan: Plan - The plan to persist.
-    """
-    ctx.memory["plan"] = plan
-
-    return ActionResult(action_name="persist_plan", 
-                        action_result_msg=f"Plan persisted to memory",
-                        success=True)
-
-
 async def print_file_content(ctx: RunContextWrapper[MyAgentContext], file_path: str) -> ActionResult:
     """Reads the content of a file and prints it into our conversation.
     Supported extensions: .csv, .json. Other extensions will be treated as plain text.
@@ -548,60 +525,30 @@ async def print_file_content(ctx: RunContextWrapper[MyAgentContext], file_path: 
                             success=False)
 
 
-async def persist_rows(ctx: RunContextWrapper[MyAgentContext], rows: list[str]) -> ActionResult:
-    """Persist rows of data that conform to the provided schema.
-    
-    Args:
-        rows: list[str] - A list of strings where each string can be parsed as a JSON object that conforms to the schema provided.
-    """
-    if not rows:
-        return ActionResult(action_name="persist_rows", 
-                           action_result_msg="No rows were passed to the tool!", 
-                           success=False)
-    
-    if "extracted_rows" not in ctx.memory:
-        ctx.memory["extracted_rows"] = []
-    
-    ctx.memory["extracted_rows"].extend(rows)
-    
-    return ActionResult(action_name="persist_rows", 
-                        action_result_msg=f"Successfully persisted {len(rows)} rows. Total rows: {len(ctx.memory['extracted_rows'])}", 
-                        success=True)
+async def extract_rows(ctx: RunContextWrapper[MyAgentContext], extraction_goal: str, row_schema: str) -> ActionResult:
+    """Invoke the Extraction Agent (EXA) to scrape structured data from a page.
 
-
-async def extraction_done(ctx: RunContextWrapper[MyAgentContext], status: bool, status_message: str) -> ActionResult:
-    """Signal that the content extraction is complete and persist the final results.
-    
-    Args:
-        status: bool - Whether the extraction was successful or not.
-        status_message: str - A summary of actions taken on success, or an explanation of why it was not possible to accomplish the goal on failure.
+    Args:    
+        extraction_goal: str - A natural language description of what information should be extracted.
+        row_schema: str - A simplified schema in JSON format describing the *shape of a single row* of the table that should be extracted. Use `snake_case` keys. Example:
+            ```json
+            {
+                "some_name": "string",
+                "the_age": "integer"
+            }
+            ```
     """
-    extracted_rows = ctx.memory.get("extracted_rows", [])
-    csv_filename = None
+    from my_extractor_agent import MyExtractorAgent
+    agent = MyExtractorAgent(ctx=ctx.new_agent_context(), 
+                             extraction_goal=extraction_goal, 
+                             row_schema=row_schema)
     
-    if extracted_rows:
-        try:
-            fieldnames = list(extracted_rows[0].keys())
-            
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            csv_filename = f"extracted_data_{timestamp}.csv"
-            
-            with open(csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writeheader()
-                writer.writerows(extracted_rows)
-                
-            status_message = f"{status_message}\nData saved to {csv_filename}"
-        except Exception as e:
-            status_message = f"{status_message}\nError saving to CSV: {str(e)}"
-            status = False
-        
-    return ActionResult(
-        action_name="extraction_done",
-        action_result_msg=f"Extraction complete. Status: {'Success' if status else 'Failed'}. {status_message}\nTotal rows extracted {len(extracted_rows)}",
-        success=status,
-        content={'extracted_rows': extracted_rows, 'csv_path': csv_filename}
-    )
+    action_result: ActionResult = await agent.run()
+
+    return ActionResult(action_name="extract_rows", 
+                        action_result_msg=action_result.action_result_msg, 
+                        success=action_result.success)
+
 
 
 class MyAgentTools:
@@ -659,7 +606,6 @@ BRAIN_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[A
     wna_navigate_and_find,
     cea_extract_content,
     print_file_content,
-    # persist_plan,
 ]
 
 NAVIGATOR_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]] = [
@@ -687,21 +633,14 @@ CEA_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[Act
     send_keys,
     get_dropdown_options,
     select_dropdown_option,
-    extraction_done,
-    persist_rows,
+    extract_rows
 ]
 
-
-class MyBrainAgentTools(MyAgentTools):
-    def __init__(self, ctx: MyAgentContext):
-        super().__init__(ctx, tools=BRAIN_TOOLS)
-
-
-class MyNavigatorAgentTools(MyAgentTools):
-    def __init__(self, ctx: MyAgentContext):
-        super().__init__(ctx, tools=NAVIGATOR_TOOLS)
-
-
-class MyContentExtractAgentTools(MyAgentTools):
-    def __init__(self, ctx: MyAgentContext):
-        super().__init__(ctx, tools=CEA_TOOLS)
+EXTRACTOR_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]] = [
+    done,
+    click_element,
+    input_text,
+    send_keys,
+    get_dropdown_options,
+    select_dropdown_option,
+]
