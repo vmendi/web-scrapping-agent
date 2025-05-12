@@ -577,6 +577,7 @@ async def extraction_done(ctx: RunContextWrapper[MyAgentContext], status: bool, 
         status_message: str - A summary of actions taken on success, or an explanation of why it was not possible to accomplish the goal on failure.
     """
     extracted_rows = ctx.memory.get("extracted_rows", [])
+    csv_filename = None
     
     if extracted_rows:
         try:

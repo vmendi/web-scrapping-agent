@@ -93,9 +93,10 @@ class MyContentExtractAgent:
         await self.ctx.browser_context.remove_highlights()
 
         # From the response, get the input and output token usage
-        input_tokens = response.usage_metadata.input_tokens
-        output_tokens = response.usage_metadata.output_tokens
-        logger.info(f"Step {step_number}, Input Tokens: {input_tokens}, Output Tokens: {output_tokens}")
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
+        total_tokens = response.usage.total_tokens
+        logger.info(f"Step {step_number}, Input Tokens: {input_tokens}, Output Tokens: {output_tokens}, Total Tokens: {total_tokens}")
     
         if response.output_text:
             logger.info(f"Step {step_number}, Response Message:\n{response.output_text}")
