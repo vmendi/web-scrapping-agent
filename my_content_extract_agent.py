@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class MyContentExtractAgent:
     def __init__(self, ctx: my_utils.MyAgentContext, extraction_goal: str, row_schema: str):
-        self.max_steps = 20
+        self.max_steps = 1000
         self.ctx = ctx
         self.extraction_goal = extraction_goal
         self.message_manager = my_utils.MessageManager(system_message_content=self._read_system_prompt())

@@ -3,10 +3,11 @@ import datetime
 import json
 import logging
 import os
+import html2text
 
 from openai.types.responses import Response
 
-from my_agent_tools import CEA_TOOLS, EXTRACTOR_TOOLS, MyAgentTools, ActionResult
+from my_agent_tools import EXTRACTOR_TOOLS, MyAgentTools, ActionResult
 import markdownify
 import my_utils
 
@@ -75,15 +76,14 @@ class MyExtractorAgent:
                 
         page = await self.ctx.browser_context.get_current_page()
         html = await page.content()
-        markdown_content = markdownify.markdownify(html)
+        # markdown_content = markdownify.markdownify(html)
 
         current_state_messages = await my_utils.get_screenshot_message(browser_context=self.ctx.browser_context)
         current_state_messages.append(
             {
                 'role': 'user',
                 'content': (
-                    f'Here is the full page content rendered as Markdown:\n\n'
-                    f'```markdown\n{markdown_content}\n```\n\n'
+                    f'Here is the full page content:\n' + html2text.html2text(html)
                 ),
             })
         messages = self.message_manager.get_messages()
