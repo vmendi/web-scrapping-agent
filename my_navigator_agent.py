@@ -68,6 +68,7 @@ class MyNavigatorAgent():
             store=False,
             temperature=0.0     # Not supported for o3 and o4-mini
         )
+        my_utils.log_openai_response_info(logger=logger, response=response, step_number=step_number)
         await self.ctx.browser_context.remove_highlights()
 
         if response.output_text:

@@ -453,11 +453,11 @@ async def wna_navigate_and_find(ctx: RunContextWrapper[MyAgentContext], navigati
                         success=action_result.success)
 
 
-async def cea_extract_content(ctx: RunContextWrapper[MyAgentContext], extraction_goal: str, row_schema: str) -> ActionResult:
-    """Invoke the Content Extraction Agent (CEA) to scrape structured data from a page.
+async def crawler_extract_content(ctx: RunContextWrapper[MyAgentContext], extraction_goal: str, row_schema: str) -> ActionResult:
+    """Invoke the Crawler Agent to scrape structured data from a page.
 
     Args:    
-        extraction_goal: str - A natural language description of what information should be extracted.
+        extraction_goal: str - A natural language description of how the page should be crawled and what information should be extracted.
         row_schema: str - A simplified schema in JSON format describing the *shape of a single row* of the table that should be extracted. Use `snake_case` keys. Example:
             ```json
             {
@@ -466,14 +466,14 @@ async def cea_extract_content(ctx: RunContextWrapper[MyAgentContext], extraction
             }
             ```
     """
-    from my_content_extract_agent import MyContentExtractAgent
-    agent = MyContentExtractAgent(ctx=ctx.new_agent_context(), 
-                                  extraction_goal=extraction_goal, 
-                                  row_schema=row_schema)
+    from my_crawler_agent import MyCrawlerAgent
+    agent = MyCrawlerAgent(ctx=ctx.new_agent_context(), 
+                           extraction_goal=extraction_goal, 
+                           row_schema=row_schema)
     
     action_result: ActionResult = await agent.run()
 
-    return ActionResult(action_name="cea_extract_content", 
+    return ActionResult(action_name="crawler_extract_content", 
                         action_result_msg=action_result.action_result_msg, 
                         success=action_result.success)
     
@@ -604,7 +604,7 @@ class MyAgentTools:
 BRAIN_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]] = [
     done,
     wna_navigate_and_find,
-    cea_extract_content,
+    crawler_extract_content,
     print_file_content,
 ]
 
@@ -625,7 +625,7 @@ NAVIGATOR_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitab
     select_dropdown_option,
 ]
 
-CEA_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]] = [
+CRAWLER_TOOLS: List[Callable[[RunContextWrapper[MyAgentContext], Any], Awaitable[ActionResult]]] = [
     go_back,
     go_to_url,
     click_element,

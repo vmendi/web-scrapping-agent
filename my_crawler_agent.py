@@ -3,13 +3,13 @@ import logging
 
 from openai.types.responses import Response
 
-from my_agent_tools import CEA_TOOLS, MyAgentTools, ActionResult
+from my_agent_tools import CRAWLER_TOOLS, MyAgentTools, ActionResult
 import my_utils
 
 logger = logging.getLogger(__name__)
 
 
-class MyContentExtractAgent:
+class MyCrawlerAgent:
     def __init__(self, ctx: my_utils.MyAgentContext, extraction_goal: str, row_schema: str):
         self.max_steps = 1000
         self.ctx = ctx
@@ -23,10 +23,10 @@ class MyContentExtractAgent:
             ephemeral=False
         )
 
-        self.my_agent_tools = MyAgentTools(ctx=self.ctx, tools=CEA_TOOLS) 
+        self.my_agent_tools = MyAgentTools(ctx=self.ctx, tools=CRAWLER_TOOLS) 
 
     def _read_system_prompt(self) -> str:
-        with open( "my_content_extract_system_03.md", "r", encoding="utf-8") as fh:
+        with open( "my_crawler_system_03.md", "r", encoding="utf-8") as fh:
             return fh.read()
 
  
@@ -48,14 +48,14 @@ class MyContentExtractAgent:
         return action_result
 
     async def step(self, step_number: int) -> ActionResult:
-        my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps, agent_name="Content Extract Agent")
+        my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps, agent_name="Crawler Agent")
 
         messages = self.message_manager.get_messages()
         browser_state = await my_utils.get_current_browser_state_message(current_step=step_number, browser_context=self.ctx.browser_context)
         messages.extend(browser_state)
         my_utils.MessageManager.persist_state(messages=messages, 
                                               step_number=step_number, 
-                                              save_dir=f"{self.ctx.save_dir}/{self.ctx.agent_id:02d}_content_extract_agent")
+                                              save_dir=f"{self.ctx.save_dir}/{self.ctx.agent_id:02d}_crawler_agent")
 
         logger.info(f'Step {step_number} - sending messages to LLM')
         response: Response = self.ctx.openai_client.responses.create(
@@ -67,12 +67,8 @@ class MyContentExtractAgent:
             store=False,
             temperature=0.0,
         )
-        await self.ctx.browser_context.remove_highlights()
-
-        input_tokens = response.usage.input_tokens
-        output_tokens = response.usage.output_tokens
-        total_tokens = response.usage.total_tokens
-        logger.info(f"Step {step_number}, Input Tokens: {input_tokens}, Output Tokens: {output_tokens}, Total Tokens: {total_tokens}")
+        my_utils.log_openai_response_info(logger=logger, response=response, step_number=step_number)
+        await self.ctx.browser_context.remove_highlights()        
     
         if response.output_text:
             logger.info(f"Step {step_number}, Response Message:\n{response.output_text}")

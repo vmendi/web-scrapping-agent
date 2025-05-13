@@ -60,6 +60,7 @@ class MyBrainAgent():
             store=False,
             temperature=0.0     # Not supported for o3 and o4-mini
         )
+        my_utils.log_openai_response_info(logger=logger, response=response, step_number=step_number)
 
         if response.output_text:
             logger.info(f"Step {step_number}, Response Message:\n{response.output_text}")

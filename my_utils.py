@@ -16,7 +16,7 @@ from typing import Type
 from pydantic import BaseModel
 
 from openai import OpenAI
-from openai.types.responses import ResponseFunctionToolCall
+from openai.types.responses import ResponseFunctionToolCall, Response
 from browser_use.browser.context import BrowserContext
 
 
@@ -398,3 +398,10 @@ async def get_current_browser_state_message(current_step: int, browser_context: 
             ]
         }
     ]
+
+
+def log_openai_response_info(logger: logging.Logger, response: Response, step_number: int):
+    input_tokens = response.usage.input_tokens
+    output_tokens = response.usage.output_tokens
+    total_tokens = response.usage.total_tokens
+    logger.info(f"Step {step_number}, Input Tokens: {input_tokens}, Output Tokens: {output_tokens}, Total Tokens: {total_tokens}")
