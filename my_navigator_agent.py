@@ -46,8 +46,11 @@ class MyNavigatorAgent():
         my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps, agent_name="Navigator Agent")
         
         messages = self.message_manager.get_messages()
-        browser_state_message = await my_utils.get_current_browser_state_message(current_step=step_number, 
-                                                                                 browser_context=self.ctx.browser_context)
+        browser_state_message = await my_utils.get_current_browser_state_message(
+            current_step=step_number, 
+            browser_context=self.ctx.browser_context,
+            include_screenshot=True
+        )
         messages.extend(browser_state_message)
         my_utils.MessageManager.persist_state(messages=messages, 
                                               step_number=step_number,
@@ -69,6 +72,7 @@ class MyNavigatorAgent():
             temperature=0.0     # Not supported for o3 and o4-mini
         )
         my_utils.log_openai_response_info(logger=logger, response=response, step_number=step_number)
+
         await self.ctx.browser_context.remove_highlights()
 
         if response.output_text:

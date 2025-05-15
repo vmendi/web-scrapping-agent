@@ -315,8 +315,8 @@ def log_step_info(logger: logging.Logger, step_number: int, max_steps: int, agen
     logger.info(f"\n{border_line}\n{step_message}\n{border_line}")
 
 
-async def get_screenshot_message(browser_context: BrowserContext) -> list[dict]:
-    screenshot_base64 = await browser_context.take_screenshot(full_page=True)
+async def get_screenshot_message(browser_context: BrowserContext, full_page: bool) -> list[dict]:
+    screenshot_base64 = await browser_context.take_screenshot(full_page=full_page)
     return [
         {
             "role": "user",
@@ -330,18 +330,8 @@ async def get_screenshot_message(browser_context: BrowserContext) -> list[dict]:
         }
     ]
 
-async def get_current_browser_state_message(current_step: int, browser_context: BrowserContext) -> list[dict]:
-    screenshot_base64 = None
-    while screenshot_base64 is None:
-        try:
-            browser_state = await browser_context.get_state()
-            # screenshot_base64 = await browser_context.take_screenshot(full_page=True)
-            screenshot_base64 = browser_state.screenshot
-        except Exception as e:
-            logger.error(f"Failed to take screenshot: {e}...\nRetrying...")
-            page = await browser_context.get_current_page()
-            await page.reload()
-            await asyncio.sleep(3)
+async def get_current_browser_state_message(current_step: int, browser_context: BrowserContext, include_screenshot: bool) -> list[dict]:
+    browser_state = await browser_context.get_state()
 
     include_attributes: list[str] = [
         'title',
@@ -376,8 +366,7 @@ async def get_current_browser_state_message(current_step: int, browser_context: 
     else:
         elements_text = '- Empty page -'
 
-    return [
-        {
+    ret = {
             "role": "user",
             "content": [
                 {
@@ -389,15 +378,23 @@ async def get_current_browser_state_message(current_step: int, browser_context: 
                             f"Available tabs:\n{browser_state.tabs}\n"
                             f"Interactive elements from top layer of the current page inside the viewport:\n{elements_text}\n"
                             f"[Current browser state ends here]"
-                },
-                {
-                    "type": "input_image",
-                    "image_url": f"data:image/png;base64,{screenshot_base64}",
-                    "detail": "high"
                 }
             ]
         }
-    ]
+
+    if include_screenshot:
+        screenshot_base64 = browser_state.screenshot
+        # screenshot_base64 = await browser_context.take_screenshot(full_page=True)
+        
+        ret['content'].append(
+            {
+                "type": "input_image",
+                "image_url": f"data:image/png;base64, {screenshot_base64}",
+                "detail": "high"
+            }
+        )
+
+    return [ret]
 
 
 def log_openai_response_info(logger: logging.Logger, response: Response, step_number: int):

@@ -47,7 +47,10 @@ class MyBrainAgent():
                 
         self.message_manager.add_ai_message(content=f"Current step: {step_number}", ephemeral=False)
         messages = self.message_manager.get_messages()
-        my_utils.MessageManager.persist_state(messages=messages, step_number=step_number, save_dir=f"{self.ctx.save_dir}/brain_agent")
+        
+        my_utils.MessageManager.persist_state(messages=messages, 
+                                              step_number=step_number, 
+                                              save_dir=f"{self.ctx.save_dir}/brain_agent")
 
         logger.info(f"Step {step_number}, Sending messages to the model...")
         response = self.ctx.openai_client.responses.create(

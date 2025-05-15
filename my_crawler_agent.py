@@ -31,7 +31,7 @@ class MyCrawlerAgent:
 
  
     async def run(self) -> ActionResult:
-        logger.info(f'Starting planning task at {self.ctx.run_id}')
+        logger.info(f'Starting crawling task at {self.ctx.run_id}')
         
         for step_number in range(self.max_steps):
             action_result = await self.step(step_number=step_number)
@@ -51,8 +51,13 @@ class MyCrawlerAgent:
         my_utils.log_step_info(logger=logger, step_number=step_number, max_steps=self.max_steps, agent_name="Crawler Agent")
 
         messages = self.message_manager.get_messages()
-        browser_state = await my_utils.get_current_browser_state_message(current_step=step_number, browser_context=self.ctx.browser_context)
-        messages.extend(browser_state)
+        browser_state_messages = await my_utils.get_current_browser_state_message(
+            current_step=step_number, 
+            browser_context=self.ctx.browser_context,
+            include_screenshot=True,
+        )
+        messages.extend(browser_state_messages)
+
         my_utils.MessageManager.persist_state(messages=messages, 
                                               step_number=step_number, 
                                               save_dir=f"{self.ctx.save_dir}/{self.ctx.agent_id:02d}_crawler_agent")
@@ -68,7 +73,8 @@ class MyCrawlerAgent:
             temperature=0.0,
         )
         my_utils.log_openai_response_info(logger=logger, response=response, step_number=step_number)
-        await self.ctx.browser_context.remove_highlights()        
+        
+        await self.ctx.browser_context.remove_highlights()
     
         if response.output_text:
             logger.info(f"Step {step_number}, Response Message:\n{response.output_text}")

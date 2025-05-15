@@ -53,14 +53,14 @@ async def main():
                          run_id=run_id)
     
     try:
-        # agent = MyBrainAgent(ctx=ctx.new_agent_context())
+        agent = MyBrainAgent(ctx=ctx.new_agent_context())
 
         # agent = MyNavigatorAgent(ctx=ctx.new_agent_context(), 
         #                          navigation_goal="Locate a page that lists all courses offered by all schools at Harvard University.")
         
-        agent = MyCrawlerAgent(ctx=ctx.new_agent_context(),
-                               extraction_goal="Extract all courses listed in the Harvard University course catalog at https://courses.my.harvard.edu. For each course, extract the course title, course code, course description, course term, teacher name, department name, department code, and school name. Ensure that courses from all Harvard schools are included.",
-                               row_schema="""{"course_title": "string", "course_code": "string", "course_description": "string", "course_term": "string", "teacher_name": "string", "department_name": "string", "department_code": "string", "school_name": "string"}""")
+        # agent = MyCrawlerAgent(ctx=ctx.new_agent_context(),
+        #                        extraction_goal="Crawl the URL https://courses.my.harvard.edu and extract all courses listed. For each course, extract the course title, course code, course description, course term, teacher name, department name, department code, and school name.",
+        #                        row_schema="""{"course_title": "string", "course_code": "string", "course_description": "string", "course_term": "string", "teacher_name": "string", "department_name": "string", "department_code": "string", "school_name": "string"}""")
         await agent.run()
     finally:
         if browser_context:

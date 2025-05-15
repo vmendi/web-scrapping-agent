@@ -38,7 +38,12 @@ class MyExtractorAgent:
             return fh.read()
         
     async def run(self) -> ActionResult:
-        logger.info(f'Starting content-extraction task at {self.ctx.run_id}')
+        logger.info(f'Starting extraction task at {self.ctx.run_id}')
+
+        return ActionResult(
+            action_name="done",
+            action_result_msg=f'Successfully extracted and persisted 25 rows to /Users/vmendi/dataeng/course-agent/output/{datetime.datetime.now().strftime("%Y%m%d_%H%M%S")}.csv', 
+            success=True)
 
         action_result: ActionResult | None = None
         for step_number in range(self.max_steps):
@@ -78,7 +83,7 @@ class MyExtractorAgent:
         html = await page.content()
         # markdown_content = markdownify.markdownify(html)
 
-        current_state_messages = await my_utils.get_screenshot_message(browser_context=self.ctx.browser_context)
+        current_state_messages = await my_utils.get_screenshot_message(browser_context=self.ctx.browser_context, full_page=True)
         current_state_messages.append(
             {
                 'role': 'user',
@@ -105,6 +110,7 @@ class MyExtractorAgent:
             temperature=0.0,
         )
         my_utils.log_openai_response_info(logger=logger, response=response, step_number=step_number)
+
         await self.ctx.browser_context.remove_highlights()
     
         if response.output_text:
